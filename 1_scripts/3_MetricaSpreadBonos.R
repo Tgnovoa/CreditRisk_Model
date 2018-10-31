@@ -273,7 +273,7 @@ merton <- merton %>%
   dplyr::mutate(rPi = ESTrPi_e * ESTsigma/sigma_e ,
                 ESTdelta = expected_default_spread(w = w,s = s,sigma = ESTsigma, t = ESTt, rPi = rPi, d1 = d1, d2 = d2),
                 ESTgamma = s - ESTdelta)
-# ratings
+#### ratings for perc calc -----
 path_ratings <- "../1_datos/csv/Ratings/"
 dir_rating <- dir(path_ratings)
 dir_rating_CIQ <- paste0(path_ratings,dir_rating[dir_rating %>% str_detect(pattern = "CIQ")])
@@ -434,4 +434,6 @@ df_bonds_model <- bonds_agg %>%
 #   dplyr::select(Ticker, ISIN, CompanyName, Identifier, ParentCompany, CIQ_ID, DateQ, Rating, perc_delta, dec_delta) %>% 
 #   write_csv(col_names = T, "../1_datos/3_MetricaSpreadBonos/df_bonds_model.csv")
 #   
-  
+read_bonds <- df_bonds_model %>% 
+  dplyr::select(Ticker, ISIN, CompanyName, Identifier, ParentCompany, CIQ_ID, DateQ, Rating, perc_delta, dec_delta)
+save(read_bonds, file = "../1_datos/3_MetricaSpreadBonos/3_MetricaSpreadBonos.RData")
