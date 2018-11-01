@@ -437,3 +437,4 @@ df_bonds_model <- bonds_agg %>%
 read_bonds <- df_bonds_model %>% 
   dplyr::select(Ticker, ISIN, CompanyName, Identifier, ParentCompany, CIQ_ID, DateQ, Rating, perc_delta, dec_delta)
 save(read_bonds, file = "../1_datos/3_MetricaSpreadBonos/3_MetricaSpreadBonos.RData")
+# load(file = "3_MetricaSpreadBonos/3_MetricaSpreadBonos.RData")
