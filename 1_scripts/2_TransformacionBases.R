@@ -92,8 +92,133 @@ ind_sd0_fin_n <- db_fin_inter %>%
 db_fin_inter <- db_fin_inter %>% 
   dplyr::filter(!Identifier %in% ind_sd0_fin_n)
 
-db_fin_inter %>% 
-  dplyr::mutate()
+#### add sectors info ----
+# first we need to add sector information to the dataframe to be able to compute some of the industry variables
+db_fin_sector_aux <- db_fin_inter %>% 
+  dplyr::left_join(read_sector %>% 
+                     dplyr::select(ISIN, CIQ_ID, `Tresalia Industry`) %>% 
+                     dplyr::transmute(Identifier = CIQ_ID, ISIN = ISIN, Sector = `Tresalia Industry`))
+aux_missing_Identifiers <- db_fin_sector_aux %>% 
+  dplyr::filter(is.na(Sector)) %>% 
+  dplyr::select(CompanyName) %>% 
+  unique() %>% 
+  .$CompanyName %>% 
+  as.character()
+
+db_fin_sector_aux2 <- db_fin_inter %>% 
+  dplyr::left_join(read_sector %>% 
+                     dplyr::select(CompanyName, ISIN, `Tresalia Industry`, CIQ_ID) %>% 
+                     dplyr::transmute(CompanyName = CompanyName, ISIN = ISIN, Sector = `Tresalia Industry`, CIQ_ID = CIQ_ID))
+db_fin_sector_aux %>% 
+  dplyr::filter(CompanyName %in% aux_missing_Identifiers) %>% 
+  dplyr::select(Identifier, CompanyName, ParentCompany, Sector) %>% 
+  unique()
+db_fin_sector_aux2 %>% 
+  dplyr::filter(CompanyName %in% aux_missing_Identifiers) %>% 
+  dplyr::select(Identifier, CompanyName, ParentCompany, Sector, CIQ_ID) %>% 
+  unique()
+db_fin_sector <- db_fin_inter %>% 
+  dplyr::left_join(read_sector %>% 
+                     dplyr::select(CompanyName, ISIN, `Tresalia Industry`, CIQ_ID) %>% 
+                     dplyr::transmute(CompanyName = CompanyName, ISIN = ISIN, Sector = `Tresalia Industry`, CIQ_ID = CIQ_ID))
+
+#### create ratios ----
+names(db_fin_sector) <- db_fin_sector %>% 
+  names() %>% 
+  gsub(pattern = "\\.", replacement = "")
+
+# create LY variables for changes
+db_fin_sector <- db_fin_sector %>% 
+  dplyr::arrange(CompanyName, Date, Identifier) %>% 
+  dplyr::group_by(Identifier) %>% 
+  dplyr::mutate(TotalSalesQLY = lag(TotalSalesQ, 4),
+                InventoriesLTMLY = lag(InventoriesLTM, 4),
+                TotalSalesLTMLY = lag(TotalSalesLTM,4),
+                InventoriesLTM_TotalSalesLTM = InventoriesLTM/TotalSalesLTM,
+                InventoriesLTMLY_TotalSalesLTMLY = InventoriesLTMLY/TotalSalesLTMLY,
+                PayablesLTMLY = lag(PayablesLTM,4),
+                ReceivablesLTMLY = lag(ReceivablesLTM, 4),
+                PayablesLTM_ReceivablesLTM = PayablesLTM/ReceivablesLTM,
+                PayablesLTMLY_ReceivablesLTMLY = PayablesLTMLY/ReceivablesLTMLY
+                ) %>% 
+  dplyr::ungroup()
+
+# create _ind variables for comp and groups
+db_fin_sector <- db_fin_sector %>%
+  dplyr::mutate(year = year(Date)) %>% 
+  dplyr::group_by(Sector, year) %>% 
+  dplyr::mutate(TotalAssets_ind = median(TotalAssetsQ, na.rm = T),
+                TotalAssets_rat = TotalAssetsQ/TotalAssets_ind,
+                TotalSalesLTM_ind = median(TotalSalesLTM, na.rm = T),
+                InventoriesQ_TotalSalesQ = InventoriesQ/TotalSalesQ,
+                InventoriesQ_TotalSalesQ_ind = median(InventoriesQ_TotalSalesQ, na.rm = T),
+                PayablesQ_ReceivablesQ = PayablesQ/ReceivablesQ,
+                PayablesQ_ReceivablesQ_ind = median(PayablesQ_ReceivablesQ, na.rm = T)
+                ) %>% 
+  dplyr::ungroup() 
+# db_fin_sector %>% 
+#   dplyr::group_by(Sector) %>% 
+#   dplyr::summarise(TA_min = min(TotalAssets_rat,na.rm = T),
+#                    TA_d1 = quantile(TotalAssets_rat,0.1, na.rm = T),
+#                    TA_d2 = quantile(TotalAssets_rat,0.2, na.rm = T),
+#                    TA_d3 = quantile(TotalAssets_rat,0.3, na.rm = T),
+#                    TA_d4 = quantile(TotalAssets_rat,0.4, na.rm = T),
+#                    TA_d5 = quantile(TotalAssets_rat,0.5, na.rm = T),
+#                    TA_d6 = quantile(TotalAssets_rat,0.6, na.rm = T),
+#                    TA_d7 = quantile(TotalAssets_rat,0.7, na.rm = T),
+#                    TA_d8 = quantile(TotalAssets_rat,0.8, na.rm = T),
+#                    TA_d9 = quantile(TotalAssets_rat,0.9, na.rm = T),
+#                    TA_max = max(TotalAssets_rat,na.rm = T))
+# db_fin_sector$TotalAssets_rat %>% 
+#   summary()
+
+# create ratios and categories  
+db_fin_mut <- db_fin_sector %>% 
+  dplyr::mutate(ROA = NetIncomeLTM/TotalAssetsQ,
+                ROC = NetIncomeLTM/TotalEquityQ,
+                SalesGrowth = TotalSalesQ/TotalSalesQLY,
+                TotalAssets_cat = factor(case_when(TotalAssets_rat < 0.4 ~ "Small",
+                                                   TotalAssets_rat < 2.5 ~ "Medium",
+                                                   TotalAssets_rat < 10 ~ "Big",
+                                                   TotalAssets_rat >= 10 ~ "2B2F",
+                                                   TRUE ~ "NA"),
+                                         levels = c("Small", "Medium", "Big", "2B2F")),
+                TotalSales_ind = TotalSalesLTM/TotalSalesLTM_ind,
+                EBITDA_Sales = pmax(pmin(EBITDALTM/TotalSalesLTM,1),0),
+                D_EBITDA_Neg = EBITDALTM<0,
+                GrossProfit_Sales = pmax(pmin(GrossProfitLTM/TotalSalesLTM,1),0),
+                D_GP_Neg = GrossProfitLTM<0,
+                IntangibleAssets_TA = pmin(IntangibleAssetsQ/TotalAssetsQ,1),
+                InventoriesCh = (InventoriesLTM_TotalSalesLTM)/(InventoriesLTMLY_TotalSalesLTMLY),
+                Inventories_Sales_ind = (InventoriesQ_TotalSalesQ)/(InventoriesQ_TotalSalesQ_ind),
+                NetWorkingCapital_Sales = pmax(NetWorkingCapitalLTM/TotalSalesLTM,0),
+                D_NWC_Neg = NetWorkingCapitalLTM<0,
+                TotalLiab_TA = TotalLiabilitiesQ/TotalAssetsQ,
+                NetDebt_EBITDA = pmax(NetDebtQ/EBITDALTM,0),
+                TotalDebt_EBITDA = pmax(TotalDebtQ/EBITDALTM,0),
+                Pay_Rec_Ch = (PayablesLTM_ReceivablesLTM)/(PayablesLTMLY_ReceivablesLTMLY),
+                Pay_Rec_ind = (PayablesQ_ReceivablesQ)/(PayablesQ_ReceivablesQ_ind),
+                EBITDA_IntExp = pmax(EBITDALTM/InterestExpenseLTM,0.7),
+                FFO_IntExp = pmax(FFOLTM/InterestExpenseLTM,0.5),
+                D_EBITDA_IntExp = EBITDA_IntExp==0.7,
+                D_FFO_IntExp = FFO_IntExp==0.5,
+                MktVEquity_BookVTotalLiab = MktValueEquityQ_avgL3m/BookValueTotalLiabilitiesQ,
+                TD_TDEq = TotalDebtQ/(TotalDebtQ+TotalEquityQ),
+                TD_TDEq_cat = factor(case_when(TD_TDEq < 0.35 ~ "Good",
+                                               TD_TDEq < 0.7 ~ "Avg.",
+                                               TD_TDEq >= 0.7 ~ "Bad",
+                                               TRUE ~ "NA"),
+                                     levels = c("Bad","Avg.","Good")),
+                RetEarn_CurrLiab = pmax(RetainedEarningsQ/CurrentLiabilitiesQ,0),
+                D_RetEarn_Neg = RetainedEarningsQ<0,
+                CashRatioL = log(1+(sum(c(CashInvestmentsQ,0),na.rm = T)/CurrentLiabilitiesQ)),
+                CurrentRatioL = log(1+(sum(c(CashInvestmentsQ,InventoriesQ,ReceivablesQ),na.rm = T)/CurrentLiabilitiesQ)),
+                QuickRatioL = log(1+(sum(c(CashInvestmentsQ,InventoriesQ),na.rm = T)/CurrentLiabilitiesQ)),
+                D_EBIT_neg = EBITLTM<0,
+                Solv = (EBITLTM - InterestExpenseLTM)*7/NetDebtQ,
+                D_GP_neg = GrossProfitLTM<0,
+                D_NWC_neg = NetWorkingCapitalLTM<0
+                )
 
 # %>% 
 #   dplyr::mutate(
@@ -153,6 +278,29 @@ db_fin_inter %>%
 
 
 
+
+
+
+
+
+#### save database ----
+vars_select <- c("Identifier", "CIQ_ID", "CompanyName", "ParentCompany", "ISIN", "Sector", "Date", "year", 
+                 "ROA", "ROC", "SalesGrowth", "TotalAssets_cat", "TotalSales_ind", 
+                 "EBITDA_Sales", "D_EBITDA_Neg", "GrossProfit_Sales", "D_GP_Neg", 
+                 "IntangibleAssets_TA", "InventoriesCh", "Inventories_Sales_ind", "NetWorkingCapital_Sales", "D_NWC_Neg", 
+                 "TotalLiab_TA", "NetDebt_EBITDA", "TotalDebt_EBITDA", 
+                 "Pay_Rec_Ch", "Pay_Rec_ind", 
+                 "EBITDA_IntExp", "FFO_IntExp", "D_EBITDA_IntExp", "D_FFO_IntExp", 
+                 "MktVEquity_BookVTotalLiab", "TD_TDEq_cat", "RetEarn_CurrLiab", "D_RetEarn_Neg",
+                 "CashRatioL", "QuickRatioL", "CurrentRatioL",
+                 "D_EBIT_neg", "Solv")
+db_fin_mut %>% 
+  dplyr::select(vars_select) %>% 
+  glimpse()
+db_fin <- db_fin_mut %>% 
+  dplyr::select(vars_select)
+save(db_fin, file = "2_TransformacionBases/2_TransformacionBases.RData")
+# load("2_TransformacionBases/2_TransformacionBases.RData")
 
 
 
