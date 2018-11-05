@@ -8,11 +8,15 @@ library(stringr)
 
 #### FUN ----
 # split y with a tree -----
-y_tree_f <- function(group = "Consumer", df, tree_form, seed = 1, perc = .2){
+y_tree_f <- function(group = "Consumer", df, tree_form, seed = 1, perc = .2, S_g = 0){
   # split df by its group
-  db_aux_group <- df %>% 
-    dplyr::ungroup() %>% 
-    dplyr::filter(group == group)
+  if(S_g>0){
+    db_aux_group <- df %>% 
+      dplyr::ungroup() %>% 
+      dplyr::filter(group == group)
+  }else{
+    db_aux_group <- df
+  }
   # simplify groups to have less than 53 categories (rpart)
   db_aux_group$Sector <- db_aux_group$Sector %>%
     as.character() %>%
@@ -46,11 +50,15 @@ y_tree_f <- function(group = "Consumer", df, tree_form, seed = 1, perc = .2){
   ret
 }
 # split y with quantiles -----
-y_quantile_f <- function(group = "Consumer", df, perc = 0.125, var_y = "prob_det"){
+y_quantile_f <- function(group = "Consumer", df, perc = 0.125, var_y = "prob_det", S_g = 0){
   # filter df by group
-  db_aux_group <- df %>% 
-    dplyr::ungroup() %>% 
-    dplyr::filter(group == group)
+  if(S_g>0){
+    db_aux_group <- df %>% 
+      dplyr::ungroup() %>% 
+      dplyr::filter(group == group)
+  }else{
+    db_aux_group <- df
+  }
   # get barrier from quantiles of pred_det dist
   quant <- quantile(x = db_aux_group[[var_y]], probs = 1-perc, na.rm=T)
   # output
@@ -61,11 +69,15 @@ y_quantile_f <- function(group = "Consumer", df, perc = 0.125, var_y = "prob_det
   ret
 }
 # split y with its mean -----
-y_mean_f <- function(group = "Consumer", df, var_y = "prob_det"){
+y_mean_f <- function(group = "Consumer", df, var_y = "prob_det", S_g = 0){
   # filter df by group
-  db_aux_group <- df %>% 
-    dplyr::ungroup() %>% 
-    dplyr::filter(group == group)
+  if(S_g>0){
+    db_aux_group <- df %>% 
+      dplyr::ungroup() %>% 
+      dplyr::filter(group == group)
+  }else{
+    db_aux_group <- df
+  }
   # output
   mean <- mean(db_aux_group[[var_y]], na.rm = T)
   db_aux_group <- db_aux_group %>%
@@ -75,7 +87,7 @@ y_mean_f <- function(group = "Consumer", df, var_y = "prob_det"){
   ret
 }
 ## general function ----
-y_f <- function(group = "Consumer", df = db_y, tree_form, seed = 1, perc = 0.125, var_y = "prob_det", f = "q"){
+y_f <- function(S_group = "Consumer", df = db_y, tree_form, seed = 1, perc = 0.125, var_y = "prob_det", f = "q"){
   # f is the parameter that indicates which function use to split the deterioration probability
   #   options are :   t ~ tree;  q ~ quantile;  m ~ mean
   f <- str_to_lower(f)
@@ -83,13 +95,15 @@ y_f <- function(group = "Consumer", df = db_y, tree_form, seed = 1, perc = 0.125
     message("Function not found (f parameter), defaulting to q (quantile split).")
     f <- "q"
   }
+  df_g <- df %>% 
+    dplyr::filter(group == S_group )
   if(f == "t"){
-    ret_list <- y_tree_f(group = group, df = df, tree_form = tree_form, seed = seed, perc = perc)
+    ret_list <- y_tree_f(group = group, df = df_g, tree_form = tree_form, seed = seed, perc = perc, S_g = 0)
   }else{
     if(f == "q"){
-      ret_list <- y_quantile_f(group = group, df = df, perc = perc, var_y = var_y)
+      ret_list <- y_quantile_f(group = group, df = df_g, perc = perc, var_y = var_y, S_g = 0)
     }else{
-      ret_list <- y_mean_f(group = group, df = df, var_y = var_y)
+      ret_list <- y_mean_f(group = group, df = df_g, var_y = var_y, S_g = 0)
     }
   }
   return(ret_list)
