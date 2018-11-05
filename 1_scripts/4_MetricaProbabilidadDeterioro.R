@@ -348,24 +348,41 @@ for(i in 1:nrow(db_detprob)){
                                          inter_rating = db_detprob$inter_adj[i], 
                                          tV_aux = db_detprob$TtM[i])
 }
-
-db_detprob %>% 
-  dplyr::ungroup() %>% 
-  dplyr::filter(Rating_NA %in% c("A-",
-                                 "BBB+","BBB","BBB-",
-                                 "BB+","BB","BB-",
-                                 "B+","B","B-",
-                                 "CCC+")) %>%
-  tidyr::gather(key = det_factor, value = det_value, c(pd,ewma,delta, delta_pd, TtM,prob_det)) %>% 
-  ggplot(aes(x = Date, y = det_value, colour = Rating_NA)) +
-  geom_point(alpha = 0.15, size = 1.5, show.legend = F) + 
-  facet_grid(det_factor~Rating_NA , scales = "free") + 
-  theme_bw() + 
-  ylab("") + scale_x_date(date_breaks = "1 year", date_labels = "%y") +
-  theme(axis.text.x = element_text(size = 7, angle = 90), 
-        strip.text = element_text(size = 5))
+# plot ----
+# db_detprob %>% 
+#   dplyr::ungroup() %>% 
+#   dplyr::filter(Rating_NA %in% c("A-",
+#                                  "BBB+","BBB","BBB-",
+#                                  "BB+","BB","BB-",
+#                                  "B+","B","B-",
+#                                  "CCC+")) %>%
+#   tidyr::gather(key = det_factor, value = det_value, c(pd,ewma,delta, delta_pd, TtM,prob_det)) %>% 
+#   ggplot(aes(x = Date, y = det_value, colour = Rating_NA)) +
+#   geom_point(alpha = 0.15, size = 1.5, show.legend = F) + 
+#   facet_grid(det_factor~Rating_NA , scales = "free") + 
+#   theme_bw() + 
+#   ylab("") + scale_x_date(date_breaks = "1 year", date_labels = "%y") +
+#   theme(axis.text.x = element_text(size = 7, angle = 90), 
+#         strip.text = element_text(size = 5))
+# 
+# db_detprob %>% 
+#   dplyr::ungroup() %>% 
+#   dplyr::left_join(read_sector %>% 
+#                      dplyr::select(CIQ_ID, `Tresalia Industry`)) %>% 
+#   dplyr::mutate(Sector =`Tresalia Industry`) %>% 
+#   dplyr::filter(!Sector %in% c("Financials", "Sovereign")) %>%
+#   unique() %>% 
+#   tidyr::gather(key = det_factor, value = det_value, c(pd,ewma,delta, delta_pd, TtM,prob_det)) %>% 
+#   ggplot(aes(x = Date, y = det_value, colour = Rating_NA)) +
+#   geom_point(alpha = 0.15, size = 1.5, show.legend = T) + 
+#   facet_grid(det_factor~Sector , scales = "free") + 
+#   theme_bw() + 
+#   ylab("") + scale_x_date(date_breaks = "1 year", date_labels = "%y") +
+#   theme(axis.text.x = element_text(size = 7, angle = 90), 
+#         strip.text = element_text(size = 5))
 #### database with output complete ----
 db_detprob_bis <- db_detprob %>% 
+  dplyr::ungroup() %>% 
   dplyr::select(CompanyName, ParentCompany, CIQ_ID, Date, DateQ, Rating, Rating_NA, BondMaturity, TtM, prob_det, start_rating)
 save(db_detprob_bis, file = "4_MetricaProbabilidadDeterioro/4_MetricaProbabilidadDeterioro.RData")
 # load(file = "4_MetricaProbabilidadDeterioro/4_MetricaProbabilidadDeterioro.RData")
