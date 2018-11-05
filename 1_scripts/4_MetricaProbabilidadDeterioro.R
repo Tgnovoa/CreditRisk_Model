@@ -63,6 +63,15 @@ read_ratings <- read_ratings %>%
                      dplyr::select(Rating,pd))
 # Model T (= times to "jump" outside grade) as an exponential process ----
 exp_mean_cens <- read_csv("csv/media_cens.csv")
+names(exp_mean_cens) <- c("Rating", "t")
+exp_mean_cens$Rating <-  c("AA+","AA","AA-",
+                           "A+","A","A-",
+                           "BBB+","BBB","BBB-",
+                           "BB+","BB","BB-",
+                           "B+","B","B-",
+                           "CCC+","CCC","CCC-",
+                           "CC","C", "NA_Rating")
+exp_mean_cens <- rbind(data.frame(Rating = "AAA", t = 7*4),exp_mean_cens)
 # the parameters for the distributions were extracted from the benchmark transition matrix data and using an assumption of censored observations
 # Model the conditional probability of change P(new_rating|change_of_rating) as a multinomial variable (with the benchmarks historical data) ----
 ratings_arrange <- read_ratings %>% 
@@ -106,6 +115,75 @@ for(i in 1:(nrow(multi_tm_prob)-1)){
 join_multinom_matrix[21,] <- (multi_tm_prob[21,] + Pmat[21,])/2
 # the decision to give the same weight to moodys_tm data and historical benchmark data was made to make easier the process, 
 # in the future it would be useful to analyse (with a bayesian framework) this assumptions
+# Create a simulation matrix that models how the distributions of time until "Default" (in our case the barrier will be set in B ratings) behave by Rating ----
+n_sim <- 100000
+sim_distr <- matrix(data = NA_real_, nrow = nrow(exp_mean_cens)-1, ncol = n_sim)
+# sim_distr %>% View()
+set.seed(12508902)
+
+aux_mat_post <- t(join_multinom_matrix)
+for(i in 1:(nrow(exp_mean_cens)-1)){
+  for(j in 1:n_sim) {
+    n_iter <- 1
+    sim_bool  = T
+    t_aux <- 0
+    unif_aux <- 0
+    sim_t <- 0
+    i_aux <- i
+    while(sim_bool){
+      k <- 1
+      t_aux <- rexp(n = 1, rate = 1/exp_mean_cens$t[i_aux])
+      unif_aux <- runif(n = 1, min = 0, max = 1)
+      aux_prob <- aux_mat_post[k,i_aux]
+      while(unif_aux>aux_prob){
+        k <- k + 1
+        aux_prob <- aux_prob + aux_mat_post[k,i_aux]
+        if(k > 20){aux_prob <- 10}
+      }
+      i_aux <- k
+      sim_t <- t_aux + sim_t
+      n_iter <- n_iter + 1
+      if(k >=15 | n_iter > 1000){
+        # k = 15 is the same as having a B rating 
+        sim_bool <- F
+      }
+    }
+    sim_distr[i,j] <- sim_t
+  }
+} 
+# transform to dataframe
+df_sim_distr <- data.frame(Rating = exp_mean_cens$Rating[-22], sim = sim_distr %>% as.data.frame)
+# #**
+# df_sim_distr %>% 
+#   tidyr::gather(value = valor, key = iteracion, -Rating) %>%
+#   ggplot(aes(x = valor, colour = Rating, fill = Rating)) +
+#   geom_density(show.legend = F, alpha = 0.7) + theme_bw() + facet_wrap(~Rating, scales = "free_y")
+# #**
+# df_sim_distr %>% 
+#   tidyr::gather(value = valor, key = iteracion, -Rating) %>%
+#   dplyr::group_by(Rating) %>%
+#   dplyr::summarise(
+#     min = min(valor),
+#     # c05 = quantile(x = valor,probs = c(0.005)),
+#     c1 = quantile(x = valor,probs = c(0.01)),
+#     # c15 = quantile(x = valor,probs = c(0.015)),
+#     # c2 = quantile(x = valor,probs = c(0.02)),
+#     # c25 = quantile(x = valor,probs = c(0.025)),
+#     # c3 = quantile(x = valor,probs = c(0.03)),
+#     # c35 = quantile(x = valor,probs = c(0.035)),
+#     # c4 = quantile(x = valor,probs = c(0.04)),
+#     # c45 = quantile(x = valor,probs = c(0.045)),
+#     c5 = quantile(x = valor,probs = c(0.05)),
+#     c10 = quantile(x = valor,probs = c(0.1)),
+#     c20 = quantile(x = valor,probs = c(0.2)),
+#     c30 = quantile(x = valor,probs = c(0.3)),
+#     c40 = quantile(x = valor,probs = c(0.4)),
+#     median = quantile(x = valor,probs = c(0.5)),
+#     c75 = quantile(x = valor,probs = c(0.75)),
+#     sd = sd(valor)) %>%
+#   as.data.table()
+
+
 #### EWMA ----
 # construct variables  next_rating, previous_rating and add diff from pd to create ewma ----
 start_date_ratings <- read_ratings %>% 
@@ -163,7 +241,127 @@ for(i in nrow(db_ratings_NA):1){
 }
 
 #### Bonds valuation ----
-# load read_bonds and add perc to matrix to get "new starting rating"
+# load read_bonds and add perc to matrix to get "new starting rating" (db_detprob)
 load("3_MetricaSpreadBonos/3_MetricaSpreadBonos.RData")
-#### Simulation of Time to "Deterioration"
+# read_bonds
+# db_ratings_NA
+db_detprob <- db_ratings_NA %>%
+  dplyr::ungroup() %>% 
+  dplyr::left_join(read_bonds %>% 
+                     dplyr::ungroup() %>% 
+                     dplyr::mutate(DateQ = as.yearqtr(DateQ)) %>% 
+                     dplyr::select(CIQ_ID,Rating, DateQ, BondMaturity, TtM, perc_delta, dec_delta)) %>% 
+  dplyr::mutate(dec_delta = ifelse(is.na(dec_delta), 0, dec_delta)) %>% 
+  unique()
+
+
+
+#### Simulation of Time to "Deterioration" ----
 # Use BB- and B+ as barriers
+
+db_detprob <- db_detprob %>% 
+  rowwise() %>% 
+  dplyr::mutate(pd_metric = ifelse(is.na(pd), sum(c(pd_aux,ewma), na.rm = T), sum(c(pd,ewma), na.rm = T)),
+                pd_metric = ifelse(pd_metric>1,1,pd_metric)) 
+# function to create diff between rating and lower rating (to add delta) ----
+pd_diff_calc <- function(rating_upper, ratings = pmat_pd$Rating %>% as.character(), pds = pmat_pd$pd){
+  if(rating_upper %>% is.factor()){
+    r_up <- rating_upper %>% as.character()
+  }else{
+    r_up <- rating_upper
+  }
+  i_grade <- which(ratings == r_up)
+  if(i_grade %>% length() == 0){
+    i_grade <- 21
+  }
+  pd_diff <- 0
+  if(i_grade < 21){
+    pd_diff <- pds[i_grade+1] - pds[i_grade]
+  }
+  return(pd_diff)
+}
+db_detprob <- db_detprob  %>% 
+  dplyr::mutate(delta_aux_diff = pd_diff_calc(rating_upper = Rating %>% as.character()),
+                delta = dec_delta * delta_aux_diff,
+                delta_pd = pd_metric + delta,
+                delta_pd = ifelse(delta_pd>1,1,delta_pd)) %>% 
+  dplyr::ungroup()
+# function to create interpolation alpha (for simulations) and upper grades to interpolate the pds ----
+r_up <- function(pd_inter, pmat = pmat_pd[,1:2], output = 1){
+  i_inter <- which(round(pd_inter,5)-pmat$pd<=0)[1]
+  if(i_inter == 1){
+    r_down <- as.character(pmat[i_inter,1])
+    adj_up <- 0
+  }else{
+    r_down <- as.character(pmat[i_inter-1,1])
+    range_inter <- abs(pmat[i_inter-1,"pd"]-pmat[i_inter,"pd"])
+    adj_up <- as.numeric((pmat[i_inter,"pd"] - pd_inter)/range_inter)
+  }
+  ret_obj <- NA
+  if(output == 1| output == "r_down"){
+    ret_obj <- r_down
+  }else{
+    if(output == 2|output == "adj_up"){
+      ret_obj <- adj_up
+      }
+  }
+  return(ret_obj)
+}
+db_detprob <- db_detprob %>% 
+  rowwise() %>% 
+  dplyr::mutate(r_up_sim = r_up(pd_inter = delta_pd, output = 1),
+                inter_adj = 1 - r_up(pd_inter = delta_pd, output = 2)) %>% 
+  dplyr::ungroup()
+
+# function to create the actual pd from the simulation interpolation process ----
+tV_median <- db_detprob$TtM %>% median(na.rm=T)
+df_prob_sim_f <- df_sim_distr[,-1] %>% t() %>% as.data.frame()
+colnames(df_prob_sim_f) <- df_sim_distr[,1]
+# df_prob_sim_f %>% glimpse()
+
+prob_sim <- function(rating_upper = "BBB-", inter_rating = 1, tV_aux = tV_median, db_sim_aux = df_prob_sim_f){
+  if(is.na(tV_aux)){
+    tV_aux <- tV_median
+  }
+  if(rating_upper == "NA_Rating"){
+    prob_upper <- sum(db_sim_aux[["NA_Rating"]]<tV)/nrow(db_sim_aux)
+    prob_lower <- prob_upper
+    prob_inter <- prob_upper
+  }else{
+    num_upper <- which(names(db_sim_aux)==rating_upper)
+    if(is.na(num_upper)){
+      message("Rating not found, BBB- will be used as proxy \n")
+      num_upper <- which(names(db_sim_aux)=="BBB-")
+    }
+    calif_aux <- names(db_sim_aux)[num_upper]
+    calif_aux_lower <- names(db_sim_aux)[num_upper+1]
+    prob_upper <- sum(db_sim_aux[[calif_aux]]<tV_aux)/nrow(db_sim_aux)
+    prob_lower <- sum(db_sim_aux[[calif_aux_lower]]<tV_aux)/nrow(db_sim_aux)
+    prob_inter <- prob_upper*(1-inter_rating) + prob_lower*(inter_rating)
+  }
+  prob_inter
+}
+
+db_detprob$prob_det <- 0.0
+for(i in 1:nrow(db_detprob)){
+  db_detprob$prob_det[i] <- prob_sim(rating_upper = db_detprob$r_up_sim[i],
+                                         inter_rating = db_detprob$inter_adj[i], 
+                                         tV_aux = db_detprob$TtM[i])
+}
+
+db_detprob %>% 
+  dplyr::ungroup() %>% 
+  dplyr::filter(Rating_NA %in% c("A-",
+                                 "BBB+","BBB","BBB-",
+                                 "BB+","BB","BB-",
+                                 "B+","B","B-",
+                                 "CCC+")) %>%
+  tidyr::gather(key = det_factor, value = det_value, c(pd,ewma,delta, delta_pd, TtM,prob_det)) %>% 
+  ggplot(aes(x = Date, y = det_value, colour = Rating_NA)) +
+  geom_point(alpha = 0.15, size = 1.5, show.legend = F) + 
+  facet_grid(det_factor~Rating_NA , scales = "free") + 
+  theme_bw() + 
+  ylab("") + scale_x_date(date_breaks = "1 year", date_labels = "%y") +
+  theme(axis.text.x = element_text(size = 7, angle = 90), 
+        strip.text = element_text(size = 5))
+
