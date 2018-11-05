@@ -364,4 +364,9 @@ db_detprob %>%
   ylab("") + scale_x_date(date_breaks = "1 year", date_labels = "%y") +
   theme(axis.text.x = element_text(size = 7, angle = 90), 
         strip.text = element_text(size = 5))
+#### database with output complete ----
+db_detprob_bis <- db_detprob %>% 
+  dplyr::select(CompanyName, ParentCompany, CIQ_ID, Date, DateQ, Rating, Rating_NA, BondMaturity, TtM, prob_det, start_rating)
+save(db_detprob_bis, file = "4_MetricaProbabilidadDeterioro/4_MetricaProbabilidadDeterioro.RData")
+# load(file = "4_MetricaProbabilidadDeterioro/4_MetricaProbabilidadDeterioro.RData")
 
