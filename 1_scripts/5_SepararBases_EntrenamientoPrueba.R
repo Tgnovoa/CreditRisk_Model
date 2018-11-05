@@ -94,4 +94,22 @@ lda_test_plot %>%
   geom_label(data = lda_test_plot_names, 
              aes(label = Sector))
 
+# create 4 groups:
+#       Consumer ~ c(Consumer Discretionary, Consumer Staples)
+#       Services ~ c(Health Care, Information Technology, Telecommunications)
+#       Industrials ~ c(Energy, Industrials, Materials, Utilities)
+#       Real Estate ~ c(Real Estate)
+
+db_fin <- db_fin %>% 
+  dplyr::mutate(group = factor(case_when(Sector %in% c("Consumer Discretionary", "Consumer Staples") ~ "Consumer",
+                                         Sector %in% c("Health Care", "Information Technology", "Telecommunications") ~ "Services",
+                                         Sector %in% c("Energy", "Industrials", "Materials", "Utilities") ~ "Industrials",
+                                         Sector %in% c("Real Estate") ~ "RealEstate",
+                                         TRUE ~ "Other"),
+                               levels = c("Consumer", "Services", "Industrials", "RealEstate", "Other")))
 #### Restrictions to split the databases (enough observations for each Sector) ----
+
+
+
+
+
