@@ -121,8 +121,8 @@ db_y <- db_detprob_bis %>%
                                          Sector %in% c("Energy", "Industrials", "Materials", "Utilities") ~ "Industrials",
                                          Sector %in% c("Real Estate") ~ "RealEstate",
                                          TRUE ~ "Other"),
-                               levels = c("Consumer", "Services", "Industrials", "RealEstate", "Other")))
-perc_cut <- 0.2
+                               levels = c("Consumer", "Services", "Industrials", "RealEstate", "Other"))) %>% unique()
+perc_cut <- 0.3
 index_group <- levels(db_y$group)[1]
 aux_y_f <- y_f(df = db_y , S_group = index_group, perc = perc_cut, f = "q")
 db_y_agg <- aux_y_f$df_group
@@ -237,5 +237,3 @@ db_split <- db_y_agg %>%
   dplyr::select(-c(ind))
 #### output ----
 save(db_split, file = "5_SeparaBases_EntrenamientoPrueba/5_SeparaBases_EntrenamientoPrueba.RData")
-
-
