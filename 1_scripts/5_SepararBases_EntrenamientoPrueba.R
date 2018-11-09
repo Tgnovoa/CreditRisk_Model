@@ -149,7 +149,7 @@ tat_sector <- function(df_s, t_perc = 0.7, s_perc = 0.3, var_y = "y_bin_q", var_
   # split dataframe to do cluster sampling
   table_s <- df_s_aux$Sector %>% table()
   n_sec <- as.integer(round(table_s*s_perc,0)+1)
-  n_df_s <- as.integer(round(nrow(df_s)*t_perc,0))
+  n_df_s <- as.integer(round(nrow(df_s)*t_perc,0)+1)
   if(sum(n_sec)>=n_df_s){
     message("s_perc higher than possible, defaulting to 0.1")
     n_sec <- as.integer(round(table_s*0.1,0)+1)
@@ -172,7 +172,7 @@ tat_sector <- function(df_s, t_perc = 0.7, s_perc = 0.3, var_y = "y_bin_q", var_
     dplyr::filter(ind %in% n_sample) %>% 
     dplyr::filter(get(var_y)==1) %>% 
     nrow()
-  rest_y <- as.integer(round(n_df_s*0.1,0)+1) - n_y
+  rest_y <- max(c(as.integer(round(n_df_s*0.1,0)+1) - n_y,1))
   df_s_aux <- df_s_aux %>% 
     dplyr::filter(!ind%in%n_sample) 
   table_rest_y <- df_s_aux %>% 

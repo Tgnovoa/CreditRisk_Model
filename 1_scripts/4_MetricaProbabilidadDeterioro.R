@@ -143,7 +143,7 @@ for(i in 1:(nrow(exp_mean_cens)-1)){
       i_aux <- k
       sim_t <- t_aux + sim_t
       n_iter <- n_iter + 1
-      if(k >=15 | n_iter > 1000){
+      if(k >=14 | n_iter > 1000){
         # k = 15 is the same as having a B rating 
         sim_bool <- F
       }
