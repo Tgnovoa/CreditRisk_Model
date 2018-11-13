@@ -97,15 +97,17 @@ for(i in 1:4){
     dplyr::select(y_bin_q) %>% 
     dplyr::transmute(y_bin  = ifelse(y_bin_q == 1, 1,0)) %>% 
     as.matrix()
+  mat_var_ratios %>% is.na() %>% colSums() / nrow(mat_var_ratios)
   mat_var_ratios[is.na(mat_var_ratios)] <- 0
   # mat_var_y[is.na(mat_var_y)] <- 0
-  glmnet1 <- glmnet(x = mat_var_ratios, y = mat_var_y, alpha = 1, family = "binomial", nlambda = 1000)
+  glmnet1 <- glmnet(x = mat_var_ratios, y = mat_var_y, alpha = 1, family = "binomial", nlambda = 1000, standardize = F)
   # coef(glmnet1) 
   
   # par(mar = c(1,1,1,1) + 1.5)
+  lambda_cv <- exp(seq(log(0.001), log(5), length.out=100))
   set.seed(12508903)
-  cv_l_cl <- cv.glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1, type.measure = "class", family = "binomial", nlambda = 1000)
-  glmnet_cl <- glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1, family = "binomial", dfmax = 20, nlambda = 1000)
+  cv_l_cl <- cv.glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1, type.measure = "class", family = "binomial", standardize = F, lambda = lambda_cv)
+  glmnet_cl <- glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1, family = "binomial", dfmax = 20, standardize = F, lambda = lambda_cv)
   # cv_l_cl %>% plot()
   # par(mfrow=c(1,3))
   # glmnet_cl %>% plot(xvar ="norm", label = T)
@@ -115,8 +117,8 @@ for(i in 1:4){
   # cv_l_cl %>% coef(s = "lambda.1se")
   # glmnet_cl %>% coef(s = cv_l_cl$lambda.1se)
   # 
-  cv_l_auc <- cv.glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1, type.measure = "auc", family = "binomial", nlambda = 1000)
-  glmnet_auc <- glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1,family = "binomial", dfmax = 20, nlambda = 1000)
+  cv_l_auc <- cv.glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1, type.measure = "auc", family = "binomial", lambda = lambda_cv, standardize = F)
+  glmnet_auc <- glmnet(x = mat_var_ratios, y = mat_var_y, alpha=1,family = "binomial", dfmax = 20, lambda = lambda_cv, standardize = F)
   # cv_l_auc %>% plot()
   # par(mfrow=c(1,3))
   # glmnet_auc %>% plot(xvar ="norm", label = T)
@@ -152,7 +154,7 @@ var_cap_exp <- c("TotalLiab_TA","NetDebt_EBITDA","NetWorkingCapital_Sales","Tota
                   "RetEarn_CurrLiab","MktVEquity_BookVTotalLiab", "FFO_IntExp", "EBITDA_IntExp")
 
 set.seed(12508904)
-i_group <- 4
+i_group <- 1
 index_group <- levels(db_model_s$group)[i_group]
 
 db_model_g <- db_model_s %>% 
@@ -166,7 +168,6 @@ db_model_cap_exp <- db_model_g %>%
   dplyr::group_by(Sector) %>% 
   dplyr::select(var_cap_exp) %>% 
   dplyr::transmute_all(funs(mean = mean, sd = sd), na.rm = T) 
-
 
 aux_norm <- db_model_g %>% 
   dplyr::select(var_cap_norm)
@@ -197,76 +198,56 @@ for(i in 1:ncol(aux_exp)){
 }
 
 
-# # function to rescale normal numeric variables (DO NOT USE ANYMORE)
-# center_colmeans <- function(x, x_center = NA_real_, x_diff = NA_real_){
-#   if(is.na(x_center | x_diff)[1]){
-#     xcenter = colMeans(x, na.rm = T)
-#     xrango <- sapply(x, range, na.rm=T)
-#     xdiff <- apply(xrango,2,diff)
-#   }else{
-#     xcenter = x_center
-#     xdiff = x_diff
-#   }
-#   y <- (x-rep(xcenter,rep.int(nrow(x), ncol(x))))/(rep(xdiff,rep.int(nrow(x), ncol(x))))
-#   X <- list(var_resc = I(y), xcenter = xcenter, xdiff = xdiff)
-#   return(X)
-# }
-# 
-# center_var <- db_model_g %>% 
-#   dplyr::select(var_norm) %>% 
-#   center_colmeans()
-
-# db_model_g[, var_norm]<- db_model_g %>% 
-#   dplyr::select(var_norm) %>% 
-#   center_colmeans() %>% 
-#   .$var_resc
-
 db_presel <- cbind(db_model_g[list_var_presel[[i_group]][[2]]], db_model_g[,"EDF1"], db_model_g[,c("year","Sector", "group","y_bin_q", "DateQ", "CompanyName", "CIQ_ID")])
-names_presel <- names(db_presel)
-(formula_presel <- as.formula(paste(paste(paste("y_bin_q ~  ", paste(names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
-                                                                          "Sector", "Industry","group","year",
-                                                                          "y_bin_q")], collapse = " + "), " + (1 + EDF1||Sector) + (1|year)")))))
-## heatmap function for remaining variables
-# plot_heatmap <- function(df,group = NA, type = 0, clust.type = "ward", tl.cex = 0.4, addrect = 3){
-#   num_var <- df %>% sapply(is.numeric)
-#   heatmap_aux <- df %>%
-#     dplyr::select(names(df)[num_var])
-#   if(!is.na(group)){
-#     heatmap_aux <- df %>%
-#       dplyr::filter(group == group) %>%
-#       dplyr::select(names(df)[num_var])
-#   }
-#   cormat<-round(cor(heatmap_aux,use="na.or.complete"),3)
-#   if(type == 1) {
-#     g4 <- corrplot::corrplot(corr = cormat, order = "hclust", tl.cex = tl.cex,
-#                              method = "square", type = "full",
-#                              tl.pos = "lt", addrect = addrect,
-#                              tl.col = "black", tl.srt = 45,
-#                              title = group , hclust.method = clust.type, mar=c(0,0,1,0))
-# 
-#   }else{
-#     cormat<-melt(cormat)
-#     g4<-ggplot(data = cormat, aes(x=Var1, y=Var2, fill=value)) +
-#       geom_tile()+scale_fill_gradient2(low = "red", high = "blue", mid = "white",
-#                                        midpoint = 0, limit = c(-1,1), space = "Lab",
-#                                        name="Pearson\nCorrelation")+
-#       theme(axis.text.x = element_text(angle = 90, vjust = 1,
-#                                        size = 7, hjust = 1),
-#             axis.text.y = element_text(angle = 0, vjust = 1,
-#                                        size = 7, hjust = 1)) +
-#       xlab("") + ylab("")
-#   }
-#   g4
-# }
+# heatmap function for remaining variables
+plot_heatmap <- function(df,group = NA, type = 0, clust.type = "ward", tl.cex = 0.4, addrect = 3){
+  num_var <- df %>% sapply(is.numeric)
+  heatmap_aux <- df %>%
+    dplyr::select(names(df)[num_var])
+  if(!is.na(group)){
+    heatmap_aux <- df %>%
+      dplyr::filter(group == group) %>%
+      dplyr::select(names(df)[num_var])
+  }
+  cormat<-round(cor(heatmap_aux,use="na.or.complete"),3)
+  if(type == 1) {
+    g4 <- corrplot::corrplot(corr = cormat, order = "hclust", tl.cex = tl.cex,
+                             method = "square", type = "full",
+                             tl.pos = "lt", addrect = addrect,
+                             tl.col = "black", tl.srt = 45,
+                             title = group , hclust.method = clust.type, mar=c(0,0,1,0))
+
+  }else{
+    cormat<-melt(cormat)
+    g4<-ggplot(data = cormat, aes(x=Var1, y=Var2, fill=value)) +
+      geom_tile()+scale_fill_gradient2(low = "red", high = "blue", mid = "white",
+                                       midpoint = 0, limit = c(-1,1), space = "Lab",
+                                       name="Pearson\nCorrelation")+
+      theme(axis.text.x = element_text(angle = 90, vjust = 1,
+                                       size = 7, hjust = 1),
+            axis.text.y = element_text(angle = 0, vjust = 1,
+                                       size = 7, hjust = 1)) +
+      xlab("") + ylab("")
+  }
+  g4
+}
+par(mfrow = c(1,1), mar = c(1,1,1,1)+1.5)
 db_presel %>% plot_heatmap(type = 1, clust.type = "ward.D", tl.cex = 0.5, addrect = 4)
-db_presel %>% 
-  dplyr::select(-c(Sector, group, CompanyName, CIQ_ID, DateQ, year)) %>% 
-  dplyr::mutate(y_bin_q = factor(y_bin_q)) %>% 
-  ggpairs()
+# db_presel %>% 
+#   dplyr::select(-c(Sector, group, CompanyName, CIQ_ID, DateQ, year)) %>% 
+#   dplyr::mutate(y_bin_q = factor(y_bin_q)) %>% 
+#   ggpairs()
 db_presel %>% summary()
 # nas should be predicted or accounted for (using bootstrap for example) to not throw away valiable information)
+# db_presel <- db_presel %>% 
+#   dplyr::mutate_if(is.numeric, funs(na = is.na(.)))
 db_presel[is.na(as.matrix(db_presel))] <- 0
 db_presel %>% summary()
+
+names_presel <- names(db_presel)
+(formula_presel <- as.formula(paste(paste(paste("y_bin_q ~  ", paste(names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
+                                                                                                       "Sector", "Industry","group","year",
+                                                                                                       "y_bin_q")], collapse = " + "), " + (1|year)")))))
 
 ## run model doing a manual stepwise (not entirely) to choose final model taking into account logic over everything else ----
 # (take out not significant variables and those that appear to have problems with spurious correlations)
@@ -279,6 +260,7 @@ glmm %>% fixef()
 glmm %>% glance()
 glmm %>% summary()
 
+
 (formula_sel <- as.formula(
   paste(
     paste(
@@ -286,29 +268,112 @@ glmm %>% summary()
             paste(
               names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                 "Sector", "Industry","group","year",
-                                                "CurrentRatioL","QuickRatioL",
-                                                "D_RetEarn_Neg","D_EBIT_neg",
-                                                "TotalAssets_cat",
-                                                "ROA","ROC",
-                                                "Inventories_Sales_ind",
-                                                # "InventoriesCh",
-                                                "Pay_Rec_ind",
-                                                "D_FFO_IntExp",
-                                                "Solv",
-                                                "SalesGrowth",
-                                                "GrossProfit_Sales",
-                                                "NetWorkingCapital_Sales",
-                                                "RetEarn_CurrLiab",
-                                                # "IntangibleAssets_TA",
-                                                "CashRatioL","TD_TDEq_cat", "EDF1",
+                                                "D_RetEarn_Neg","D_EBIT_neg","D_NWC_Neg",
+                                                "GrossProfit_Sales","NetWorkingCapital_Sales",
+                                                # "NetDebt_EBITDA",
+                                                "TotalDebt_EBITDA","RetEarn_CurrLiab","Solv",
+                                                "EDF1",
+                                                "TotalLiab_TA","D_FFO_IntExp",
+                                                "Pay_Rec_Ch","Inventories_Sales_ind","TD_TDEq_cat",
                                                 "y_bin_q")], collapse = " + "), 
-            " + (1 |TotalAssets_cat) + (1|year)")))))
+            "+ (1|year)"))))
+  )
 # glmm <- glmer(formula = formula_sel, data = db_presel, family = binomial(link="probit"))
+glmm %>% glance()
 glmm <- glmer(formula = formula_sel, data = db_presel, family = binomial)
-# db_presel %>% 
-#   ggplot(aes(x = DateQ,  y = EDF1, colour = y_bin_q)) + geom_boxplot(alpha = 0.5) + facet_grid(Sector~year, scales = "free") 
-# table(db_presel$TotalAssets_cat, db_presel$y_bin_q)
-#
+glmm %>% glance()
+glmm %>% summary()
+
+db_presel %>% 
+  # dplyr::filter(Inventories_Sales_ind>0) %>%
+  ggplot(aes(colour = y_bin_q, x = Inventories_Sales_ind, fill = y_bin_q)) + geom_histogram(alpha = 0.4, bins = 50) + 
+  # facet_wrap(~y_bin_q,ncol=1, scales = "free_y") +
+  theme_bw()
+
+# bootstrap for reduction of n1 for betas ----
+sample_n_glmm <- function(seed=1, data = db_presel, k_cv = 0.1){
+  r <- floor(nrow(data)*(1-k_cv)) + 1 
+  set.seed(seed)
+  sample_id <- sample(x = 1:nrow(data), size = r)
+  data_for <- data[sample_id,]
+  return(data_for)
+}
+center_colmeans <- function(x, x_center = NA_real_, x_diff = NA_real_){
+  if(is.na(x_center | x_diff)[1]){
+    xcenter = colMeans(x, na.rm = T)
+    xrango <- sapply(x, sd, na.rm=T)
+    xdiff <- xrango
+  }else{
+    xcenter = x_center
+    xdiff = x_diff
+  }
+  y <- (x-rep(xcenter,rep.int(nrow(x), ncol(x))))/(rep(xdiff,rep.int(nrow(x), ncol(x))))
+  X <- list(var_resc = I(y), xcenter = xcenter, xdiff = xdiff)
+  return(X)
+}
+bs_glmm <- function(data = db_presel, seed = 1, k_cv = .1, bk = 200, formula_glmm = formula_sel, nf = 6, nr = 15){
+  bs_F_matrix <- matrix(data = NA, nrow = bk, ncol = nf)
+  # bs_R_matrix <- matrix(data = NA, nrow = bk, ncol = nr)
+  for(i in 1:bk){
+    data_for <- sample_n_glmm(seed = seed+i, data = data, k_cv = k_cv)
+    glmm_aux <- glmer(formula = formula_glmm, data = data_for, family = binomial)
+    bs_F_matrix[i,] <- glmm_aux@beta
+    # bs_R_matrix[i,] <- glmm_aux@u
+  }  
+  bs_F_df <- bs_F_matrix %>% as.data.frame()
+  names(bs_F_df) <- c("Intercept", names(glmm_aux@frame)[2:nf])
+  # bs_R_df <- bs_R_matrix %>% as.data.frame()
+  # names(bs_R_df) <- c(names(glmm_aux@frame)[(nf+1):ncol(glmm_aux@frame)]) 
+  gg_bs_F <- bs_F_df %>% 
+    tidyr::gather(key = var, value = value) %>% 
+    ggplot(aes(x = value,  colour = var)) + 
+    geom_histogram(bins = 10, show.legend = F) + facet_wrap(~var, scales = "free") +
+    theme_bw()
+  bs_F_df <- bs_F_df %>% 
+    center_colmeans() %>% 
+    .$var_resc
+  Abs_F_df <- abs(bs_F_df)
+  min_F_matrix <- matrix(data = NA, ncol = 1, nrow = bk)
+  min_F_ind <- matrix(data = NA, ncol = 1, nrow = bk)
+  for(j in 1:bk){
+    min_F_ind[j,1] <- which(Abs_F_df[j,] == max(Abs_F_df[j,-c(1)]))
+    min_F_matrix[j,1] <- Abs_F_df[j,min_F_ind[j,1]]
+  }
+  i_min <- which(min_F_matrix == min(min_F_matrix))
+  # gg_bs_R <- bs_R_df %>% 
+  #   tidyr::gather(key = var, value = value) %>% 
+  #   ggplot(aes(x = value, colour = var)) + 
+  #   geom_histogram(bins = 10, show.legend = F) + facet_wrap(~var, scales = "free_y") +
+  #   theme_bw()
+  bs_list <- list(i_min = i_min, fixed = I(gg_bs_F))
+  
+  return(bs_list)
+}
+{
+  formula_sel <- as.formula(
+    paste(
+      paste(
+        paste("y_bin_q ~  ", 
+              paste(
+                names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
+                                                  "Sector", "Industry","group","year",
+                                                  "D_RetEarn_Neg","D_EBIT_neg","D_NWC_Neg",
+                                                  "GrossProfit_Sales","NetWorkingCapital_Sales",
+                                                  # "NetDebt_EBITDA",
+                                                  "TotalDebt_EBITDA","RetEarn_CurrLiab","Solv",
+                                                  "EDF1",
+                                                  "TotalLiab_TA","D_FFO_IntExp",
+                                                  "Pay_Rec_Ch","Inventories_Sales_ind","TD_TDEq_cat",
+                                                  "y_bin_q")], collapse = " + "), 
+              "+ (1|year)"))))
+}
+nf <- glmm@beta %>% length()
+nr <- glmm@u %>% length()
+res_bs_glmm <- bs_glmm(data = db_presel, seed = i_group, k_cv = 0.1, bk = 100, formula_glmm = formula_sel, nf = nf, nr = nr)
+res_bs_glmm$fixed
+db_presel_bs <- sample_n_glmm(seed = i_group + res_bs_glmm$i_min, data = db_presel, k_cv = 0.1)
+glmm <- glmer(formula = formula_sel, data = db_presel_bs, family = binomial)
+summary(glmm)
 # formulas and variables ----
 {
   glmm1 <- glmm
@@ -319,20 +384,24 @@ glmm <- glmer(formula = formula_sel, data = db_presel, family = binomial)
               paste(
                 names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                   "Sector", "Industry","group","year",
-                                                  "D_EBITDA_Neg","D_GP_Neg","D_NWC_Neg","D_RetEarn_Neg","D_EBIT_neg",
-                                                  "ROC","TotalLiab_TA","TotalSales_ind","NetDebt_EBITDA","Solv",
-                                                  "InventoriesCh","Pay_Rec_ind","NetWorkingCapital_Sales","CashRatioL","RetEarn_CurrLiab",
+                                                  "D_NWC_Neg","D_RetEarn_Neg","D_EBIT_neg",
                                                   "TotalAssets_cat",
+                                                  "NetDebt_EBITDA","ROC","SalesGrowth","NetWorkingCapital_Sales","EBITDA_IntExp","MktVEquity_BookVTotalLiab",
+                                                  "EDF1",
+                                                  "TotalDebt_EBITDA","Solv","RetEarn_CurrLiab","TotalLiab_TA",
+                                                  "InventoriesCh","IntangibleAssets_TA","Pay_Rec_ind",
                                                   "y_bin_q")], collapse = " + "), 
-              " + (1 + EDF1||Sector) + (1|year) + (1|TotalAssets_cat)"))))
+              " + (1 |Sector) + (1|year) + (1 |TotalAssets_cat)"))))
   var_sel1 <- names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                 "Sector", "Industry","group","year",
-                                                "D_EBITDA_Neg","D_GP_Neg","D_NWC_Neg","D_RetEarn_Neg","D_EBIT_neg",
-                                                "ROC","TotalLiab_TA","TotalSales_ind","NetDebt_EBITDA","Solv",
-                                                "InventoriesCh","Pay_Rec_ind","NetWorkingCapital_Sales","CashRatioL","RetEarn_CurrLiab",
+                                                "D_NWC_Neg","D_RetEarn_Neg","D_EBIT_neg",
                                                 "TotalAssets_cat",
+                                                "NetDebt_EBITDA","ROC","SalesGrowth","NetWorkingCapital_Sales","EBITDA_IntExp","MktVEquity_BookVTotalLiab",
+                                                "EDF1",
+                                                "TotalDebt_EBITDA","Solv","RetEarn_CurrLiab","TotalLiab_TA",
+                                                "InventoriesCh","IntangibleAssets_TA","Pay_Rec_ind",
                                                 "y_bin_q")]
-  rand_sel1 <- " + (1 + EDF1||Sector) + (1|year) + (1|TotalAssets_cat)"
+  rand_sel1 <- " + (1 |Sector) + (1|year) + (1|TotalAssets_cat)"
   }
 {
   glmm2 <- glmm
@@ -343,22 +412,32 @@ glmm <- glmer(formula = formula_sel, data = db_presel, family = binomial)
               paste(
                 names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                   "Sector", "Industry","group","year",
-                                                  "D_EBITDA_Neg","D_NWC_Neg","D_FFO_IntExp","D_RetEarn_Neg",
-                                                  "TD_TDEq_cat","RetEarn_CurrLiab","ROC","GrossProfit_Sales","TotalLiab_TA","D_EBIT_neg",
-                                                  "Pay_Rec_ind","ROA","Pay_Rec_Ch","IntangibleAssets_TA",
-                                                  "TotalAssets_cat",
-                                                  "Solv",
+                                                  "CurrentRatioL","QuickRatioL",
+                                                  "D_NWC_Neg",
+                                                  "D_RetEarn_Neg",
+                                                  "TD_TDEq_cat",
+                                                  "RetEarn_CurrLiab",
+                                                  "ROC","Solv",
+                                                  "NetWorkingCapital_Sales","TotalDebt_EBITDA","MktVEquity_BookVTotalLiab",
+                                                  "TotalSales_ind","EBITDA_IntExp","Pay_Rec_Ch","FFO_IntExp",
+                                                  "EDF1",
+                                                  # "TotalAssets_cat", "NetDebt_EBITDA","CashRatioL","Pay_Rec_ind",
                                                   "y_bin_q")], collapse = " + "), 
-              " + (1 |Sector) + (1|year) + (1|TotalAssets_cat)"))))
+              " + (1|Sector) + (1|year) "))))
   var_sel2 <- names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                 "Sector", "Industry","group","year",
-                                                "D_EBITDA_Neg","D_NWC_Neg","D_FFO_IntExp","D_RetEarn_Neg",
-                                                "TD_TDEq_cat","RetEarn_CurrLiab","ROC","GrossProfit_Sales","TotalLiab_TA","D_EBIT_neg",
-                                                "Pay_Rec_ind","ROA","Pay_Rec_Ch","IntangibleAssets_TA",
-                                                "TotalAssets_cat",
-                                                "Solv",
+                                                "CurrentRatioL","QuickRatioL",
+                                                "D_NWC_Neg",
+                                                "D_RetEarn_Neg",
+                                                "TD_TDEq_cat",
+                                                "RetEarn_CurrLiab",
+                                                "ROC","Solv",
+                                                "NetWorkingCapital_Sales","TotalDebt_EBITDA","MktVEquity_BookVTotalLiab",
+                                                "TotalSales_ind","EBITDA_IntExp","Pay_Rec_Ch","FFO_IntExp",
+                                                "EDF1",
+                                                # "TotalAssets_cat", "NetDebt_EBITDA","CashRatioL","Pay_Rec_ind",
                                                 "y_bin_q")]
-  rand_sel2 <- " + (1 |Sector) + (1|year) + (1|TotalAssets_cat)"
+  rand_sel2 <- " + (1 |Sector) + (1|year)"
 }
 {
   glmm3 <- glmm
@@ -369,22 +448,22 @@ glmm <- glmer(formula = formula_sel, data = db_presel, family = binomial)
               paste(
                 names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                   "Sector", "Industry","group","year",
-                                                  "CurrentRatioL","QuickRatioL",
-                                                  "D_NWC_Neg","D_FFO_IntExp","D_EBIT_neg",
-                                                  "ROC","RetEarn_CurrLiab","Solv","EBITDA_Sales",
-                                                  "NetDebt_EBITDA","FFO_IntExp",
-                                                  "Inventories_Sales_ind",
+                                                  "CurrentRatioL","QuickRatioL","TotalDebt_EBITDA",
+                                                  "D_NWC_Neg","D_EBIT_neg",
+                                                  "RetEarn_CurrLiab", "Solv", "CashRatioL","TotalSales_ind",
+                                                  "NetDebt_EBITDA","MktVEquity_BookVTotalLiab","FFO_IntExp",
+                                                  "Pay_Rec_Ch","ROC",
                                                   "y_bin_q")], collapse = " + "), 
-              " + (1 + EDF1||Sector)  + (1|year)"))))
+              " + (1 |Sector) + (1|year)"))))
   var_sel3 <- names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                 "Sector", "Industry","group","year",
-                                                "CurrentRatioL","QuickRatioL",
-                                                "D_NWC_Neg","D_FFO_IntExp","D_EBIT_neg",
-                                                "ROC","RetEarn_CurrLiab","Solv","EBITDA_Sales",
-                                                "NetDebt_EBITDA","FFO_IntExp",
-                                                "Inventories_Sales_ind",
+                                                "CurrentRatioL","QuickRatioL","TotalDebt_EBITDA",
+                                                "D_NWC_Neg","D_EBIT_neg",
+                                                "RetEarn_CurrLiab", "Solv", "CashRatioL","TotalSales_ind",
+                                                "NetDebt_EBITDA","MktVEquity_BookVTotalLiab","FFO_IntExp",
+                                                "Pay_Rec_Ch","ROC",
                                                 "y_bin_q")]
-  rand_sel3 <-  " + (1 + EDF1||Sector)  + (1|year)"
+  rand_sel3 <-  "  + (1 |Sector)  + (1|year)"
 }
 {
   glmm4 <- glmm
@@ -395,28 +474,26 @@ glmm <- glmer(formula = formula_sel, data = db_presel, family = binomial)
               paste(
                 names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                   "Sector", "Industry","group","year",
-                                                  "CurrentRatioL","QuickRatioL",
-                                                  "D_RetEarn_Neg","D_EBIT_neg",
-                                                  "TotalAssets_cat",
-                                                  "ROA","ROC",
-                                                  "Inventories_Sales_ind","InventoriesCh",
-                                                  "Pay_Rec_ind","D_FFO_IntExp","Solv","SalesGrowth",
-                                                  "GrossProfit_Sales","NetWorkingCapital_Sales","RetEarn_CurrLiab",
-                                                  "IntangibleAssets_TA",
+                                                  "D_RetEarn_Neg","D_EBIT_neg","D_NWC_Neg",
+                                                  "GrossProfit_Sales","NetWorkingCapital_Sales",
+                                                  # "NetDebt_EBITDA",
+                                                  "TotalDebt_EBITDA","RetEarn_CurrLiab","Solv",
+                                                  "EDF1",
+                                                  "TotalLiab_TA","D_FFO_IntExp",
+                                                  "Pay_Rec_Ch","Inventories_Sales_ind","TD_TDEq_cat",
                                                   "y_bin_q")], collapse = " + "), 
-              " + (1 |TotalAssets_cat) + (1|year)"))))
+              "+ (1|year)"))))
   var_sel4 <- names_presel[!names_presel %in% c("DateQ", "CompanyName", "CIQ_ID",
                                                 "Sector", "Industry","group","year",
-                                                "CurrentRatioL","QuickRatioL",
-                                                "D_RetEarn_Neg","D_EBIT_neg",
-                                                "TotalAssets_cat",
-                                                "ROA","ROC",
-                                                "Inventories_Sales_ind","InventoriesCh",
-                                                "Pay_Rec_ind","D_FFO_IntExp","Solv","SalesGrowth",
-                                                "GrossProfit_Sales","NetWorkingCapital_Sales","RetEarn_CurrLiab",
-                                                "IntangibleAssets_TA",
+                                                "D_RetEarn_Neg","D_EBIT_neg","D_NWC_Neg",
+                                                "GrossProfit_Sales","NetWorkingCapital_Sales",
+                                                # "NetDebt_EBITDA",
+                                                "TotalDebt_EBITDA","RetEarn_CurrLiab","Solv",
+                                                "EDF1",
+                                                "TotalLiab_TA","D_FFO_IntExp",
+                                                "Pay_Rec_Ch","Inventories_Sales_ind","TD_TDEq_cat",
                                                 "y_bin_q")]
-  rand_sel4 <-  " + (1 |TotalAssets_cat) + (1|year)"
+  rand_sel4 <-  " + (1|year)"
 }
 # glmm_par[[1]] <- list(glmm = glmm, formula = formula_sel1, variables = var_sel1, rand_sel = rand_sel1, var_norm = db_model_cap_norm, var_exp = db_model_cap_exp)
 # glmm_par[[2]] <- list(glmm = glmm, formula = formula_sel2, variables = var_sel2, rand_sel = rand_sel2, var_norm = db_model_cap_norm, var_exp = db_model_cap_exp)
@@ -482,7 +559,7 @@ for(j in 1:4){
   
   # db_model_g_test %>% summary()
   
-  db_model_train$pred <- predict(glmm_par[[i_group]]$glmm, type = "response", allow.new.levels = T)
+  db_model_train$pred <- predict(glmm_par[[i_group]]$glmm,newdata = db_model_train, type = "response", allow.new.levels = T)
   db_model_test$pred <- predict(glmm_par[[i_group]]$glmm, newdata = db_model_g_test, type = "response", allow.new.levels = T)
   db_model_aux <- rbind(db_model_test, db_model_train)
   db_model_glmm <- rbind(db_model_glmm, db_model_aux)
@@ -504,6 +581,7 @@ db_model_glmm %>%
   facet_wrap(~Rating_NA, ncol = 4) + theme_bw()
 
 ## EDFs by random trees ----
+# prepare EDF data ----
 db_edf <- read_edf %>% 
   dplyr::mutate(slope = EDF5-EDF,
                 EDFch = EDF-EDF_LY,
@@ -590,41 +668,118 @@ db_tree_edf <- db_edf %>%
                                levels = c("Consumer", "Services", "Industrials", "RealEstate", "Other")))
   
 # db_tree_edf$y_error %>% hist()
+# train random trees ----
 
 (formula_tree <- as.formula("y_error ~ EDF1 + EDF5 + DetProb + slope + EDF1_Ch + DetProb_Ch + D_slope + 
                             Rating_A + Rating_BPort + Rating_C + D_rating  + group"))
+(formula_tree_2<- as.formula("y_error ~ EDF1 + EDF5 + DetProb + slope + EDF1_Ch + DetProb_Ch + D_slope"))
 set.seed(12508911)
 train_tree <- which(db_tree_edf$tat == "test")
 tree_edf <-  rpart(formula_tree ,data = db_tree_edf, subset = train_tree,
-                   method = "anova", control = rpart.control(minsplit = 20, cp = 0.0025))
+                   method = "anova", control = rpart.control(minsplit = 20, cp = 0.001))
 tree_edf
 rpart.plot(tree_edf)
-db_tree_edf$edf_tree <- predict(tree_edf, newdata = db_tree_edf)
+
+printcp(tree_edf)
+ptree_edf <- prune(tree_edf, cp = 0.00175)
+ptree_edf
+rpart.plot(ptree_edf)
+
+## model performance ----
+db_tree_edf$edf_tree <- predict(ptree_edf, newdata = db_tree_edf)
 db_tree_edf <- db_tree_edf %>% 
   dplyr::mutate(pred_edf = pred + edf_tree,
                 pred_edf = case_when(pred_edf>1~1,
                                      pred_edf<0~0,
                                      TRUE~pred_edf)) 
 db_tree_edf %>% 
-  # dplyr::filter(tat == "train") %>%
-  ggplot(aes(x = DateQ, y = pred_edf, colour = y_bin_q)) + 
-  geom_point(alpha = 0.4, show.legend = F) + facet_wrap(~Rating) + theme_bw()
-db_tree_edf %>% summary()
-table(db_tree_edf$pred_edf>0.25, db_tree_edf$y_bin_q)
-table(db_tree_edf$Rating,db_tree_edf$pred_edf>0.25)
-
-
-glmm_par
-
-
-## model performance ----
-db_tree_edf$edf_tree <- predict(tree_edf, newdata = db_tree_edf)
-db_tree_edf <- db_tree_edf %>% 
-  dplyr::mutate(pred_edf = pred + y_error) 
-db_tree_edf %>% 
   dplyr::filter(tat == "train") %>%
   ggplot(aes(x = DateQ, y = pred_edf, colour = y_bin_q)) + 
   geom_point(alpha = 0.4, show.legend = F) + facet_wrap(~Rating) + theme_bw()
 table(db_tree_edf$pred_edf>0.1, db_tree_edf$y_bin_q)
 db_tree_edf %>% summary()
-## macro information ----
+# confusion matrix plot ----
+cut_list <- seq(0,1,.001)
+conf_mat <- matrix(data = NA_real_, nrow = length(cut_list), ncol = 5)
+for(i in seq_along(cut_list)){
+  lambda <- cut_list[i]
+  conf_mat[i,1] <- lambda
+  conf_mat[i,2] <- sum((db_tree_edf$pred_edf>lambda)==(db_tree_edf$y_bin_q==1), na.rm = T)/nrow(db_tree_edf)
+  conf_mat[i,3] <- sum((db_tree_edf$pred_edf>lambda)&(db_tree_edf$y_bin_q==1), na.rm = T)/sum(db_tree_edf$y_bin_q==1)
+  conf_mat[i,4] <- sum((db_tree_edf$pred_edf<=lambda)&(db_tree_edf$y_bin_q==0), na.rm = T)/sum(db_tree_edf$y_bin_q==0)
+  conf_mat[i,5] <- sum((db_tree_edf$pred_edf>lambda)&(db_tree_edf$y_bin_q==1), na.rm = T)/sum(db_tree_edf$pred_edf>lambda, na.rm = T)
+}
+
+conf_mat <- conf_mat %>% 
+  as.data.frame() 
+names(conf_mat) <- c("cut", "acc", "sensitivity", "specificity", "precision")
+
+db_tree_edf %>% 
+  dplyr::group_by(Rating) %>% 
+  dplyr::summarise(min = min(pred_edf, na.rm = T),
+                   d1 = quantile(pred_edf, probs = c(0.1), na.rm = T),
+                   d2 = quantile(pred_edf, probs = c(0.2), na.rm = T),
+                   d3 = quantile(pred_edf, probs = c(0.3), na.rm = T),
+                   d4 = quantile(pred_edf, probs = c(0.4), na.rm = T),
+                   d5 = quantile(pred_edf, probs = c(0.5), na.rm = T),
+                   d6 = quantile(pred_edf, probs = c(0.6), na.rm = T),
+                   d7 = quantile(pred_edf, probs = c(0.7), na.rm = T),
+                   d8 = quantile(pred_edf, probs = c(0.8), na.rm = T),
+                   d9 = quantile(pred_edf, probs = c(0.9), na.rm = T),
+                   max = max(pred_edf, na.rm = T)) %>% View()
+conf_mat %>% 
+  tidyr::gather(key = stat, value = value, -c(cut)) %>% 
+  ggplot(aes(x = cut, y = value, colour = stat)) + 
+  geom_point(alpha = 0.75) + theme_bw() + 
+  geom_vline(xintercept = 0.1, col = "yellow") +
+  geom_vline(xintercept = 0.7, col = "red") 
+  
+
+db_tree_edf %>% 
+  dplyr::filter(tat == "test") %>% 
+  dplyr::mutate(stop_sign = factor(ifelse(pred_edf<0.1, "Green",
+                                          ifelse(pred_edf<0.25, "Yellow",
+                                                 ifelse(pred_edf<0.7, "Orange","Red"))), 
+                                   levels = c("Red","Orange", "Yellow","Green"))) %>% 
+  dplyr::filter(!is.na(pred_edf)) %>% 
+  ggplot(aes(x = DateQ, y = pred_edf, colour = y_bin_q)) + 
+  geom_jitter(alpha = 0.25, show.legend = F) + facet_grid(stop_sign~Rating) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, size = 7))
+stopSign_list <- c(0.1,0.25,0.7)
+db_tree_edf %>% 
+  dplyr::filter(Rating%in%c("BBB+","BBB","BBB-","BB+","BB","BB-")) %>% 
+  dplyr::arrange(desc(pred_edf), DateQ) %>% View()
+db_stop_aux <- db_tree_edf %>% 
+  dplyr::filter(Rating%in%c("BBB+","BBB","BBB-","BB+","BB","BB-")) %>% 
+  dplyr::select(y_bin_q,Rating,DateQ,Sector,pred_edf) %>% 
+  dplyr::mutate(stop_sign = factor(ifelse(pred_edf<0.1125, 1,
+                                          ifelse(pred_edf<.2, 2,
+                                                 ifelse(pred_edf<0.4, 3,
+                                                        ifelse(pred_edf<0.65, 4,5))))))
+db_stop_aux %>% 
+  dplyr::filter(!is.na(stop_sign)) %>% 
+  ggplot(aes(x = DateQ, y = pred_edf, colour = Rating)) + 
+  geom_jitter(alpha = 0.25) + facet_grid(y_bin_q ~ stop_sign) + theme_bw()
+table(db_stop_aux$stop_sign=="Yellow", db_stop_aux$y_bin_q)
+
+load(file = "1_LecturaBases/1_LecturaBases.RData")
+db_tree_edf %>% 
+  dplyr::filter(Rating%in%c("BBB+","BBB","BBB-","BB+","BB","BB-")) %>% 
+  dplyr::left_join(read_sector %>% dplyr::select(-c(X15,X16))) %>% 
+  dplyr::filter(DateQ>as.yearqtr("2016 Q4")) %>% 
+  dplyr::arrange(desc(pred_edf), edf_tree) %>% 
+  dplyr::select(ParentCompany,ISIN,CompanyName,DateQ,Sector,Rating,EDF1,EDF5,DetProb,slope,EDF1_Ch,y_bin_q,edf_tree,pred_edf) %>% 
+  View()
+
+
+(formula_tree <- as.formula("y_error ~ EDF1 + EDF5 + DetProb + slope + EDF1_Ch + DetProb_Ch + D_slope + 
+                            Rating_A + Rating_BPort + Rating_C + D_rating  + group"))
+set.seed(12508911)
+train_tree <- which(db_tree_edf$tat == "test")
+tree_par <-  rpart(formula_tree ,data = db_tree_edf, subset = train_tree,
+                   method = "anova", control = rpart.control(minsplit = 20, cp = 0.00175))
+### output ----
+save(tree_par, stopSign_list, file = "6_EntrenamientoModelo_creacion/tree_par.RData")
+
+
+

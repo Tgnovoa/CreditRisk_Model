@@ -122,7 +122,54 @@ db_y <- db_detprob_bis %>%
                                          Sector %in% c("Real Estate") ~ "RealEstate",
                                          TRUE ~ "Other"),
                                levels = c("Consumer", "Services", "Industrials", "RealEstate", "Other"))) %>% unique()
-perc_cut <- 0.3
+db_y %>% 
+  ggplot(aes(x = DateQ, y = prob_det, colour = Rating)) + 
+  geom_point(alpha = 0.2) + 
+  facet_wrap(~Rating) + theme_bw()
+db_y %>% 
+  ggplot(aes(x = DateQ, y = prob_det, colour = Rating)) + 
+  geom_point(alpha = 0.2) + 
+  facet_wrap(~group) + theme_bw()
+db_y %>% 
+  dplyr::filter(!group%in%c("Other"), !Rating=="NA") %>% 
+  ggplot(aes(x = prob_det, fill = group)) + 
+  geom_histogram(position = "stack", col = "black", bins = 20) + 
+  facet_wrap(~Rating, scales = "free_y", ncol = 6) + theme_bw() + 
+  scale_x_continuous(minor_breaks = seq(0,1,0.05), breaks = seq(0,1,0.2))
+db_y %>% 
+  dplyr::filter(group%in%c("Consumer"), !Rating=="NA") %>% 
+  ggplot(aes(x = prob_det, fill = Sector)) + 
+  geom_histogram(position = "stack", col = "black", bins = 20) + 
+  facet_wrap(~Rating, scales = "free_y", ncol = 6) + theme_bw() + 
+  scale_x_continuous(minor_breaks = seq(0,1,0.05), breaks = seq(0,1,0.2))
+db_y %>% 
+  dplyr::filter(group%in%c("Services"), !Rating=="NA") %>% 
+  ggplot(aes(x = prob_det, fill = Sector)) + 
+  geom_histogram(position = "stack", col = "black", bins = 20) + 
+  facet_wrap(~Rating, scales = "free_y", ncol = 6) + theme_bw() + 
+  scale_x_continuous(minor_breaks = seq(0,1,0.05), breaks = seq(0,1,0.2))
+db_y %>% 
+  dplyr::filter(group%in%c("Industrials"), !Rating=="NA") %>% 
+  ggplot(aes(x = prob_det, fill = Sector)) + 
+  geom_histogram(position = "stack", col = "black", bins = 20) + 
+  facet_wrap(~Rating, scales = "free_y", ncol = 6) + theme_bw() + 
+  scale_x_continuous(minor_breaks = seq(0,1,0.05), breaks = seq(0,1,0.2))
+db_y %>% 
+  dplyr::filter(group%in%c("RealEstate"), !Rating=="NA") %>% 
+  ggplot(aes(x = prob_det, fill = Sector)) + 
+  geom_histogram(position = "stack", col = "black", bins = 20) + 
+  facet_wrap(~Rating, scales = "free_y", ncol = 6) + theme_bw() + 
+  scale_x_continuous(minor_breaks = seq(0,1,0.05), breaks = seq(0,1,0.2))
+db_y %>% 
+  dplyr::group_by(group) %>% 
+  dplyr::summarise(min = min(prob_det, na.rm = T),
+                   q1 = quantile(prob_det, probs = c(0.25), na.rm = T),
+                   q2 = quantile(prob_det, probs = c(0.5), na.rm = T),
+                   d7 = quantile(prob_det, probs = c(0.7), na.rm = T),
+                   q3 = quantile(prob_det, probs = c(0.75), na.rm = T),
+                   d8 = quantile(prob_det, probs = c(0.8), na.rm = T),
+                   max = max(prob_det, na.rm = T)) %>% View()
+perc_cut <- 1-0.775
 index_group <- levels(db_y$group)[1]
 aux_y_f <- y_f(df = db_y , S_group = index_group, perc = perc_cut, f = "q")
 db_y_agg <- aux_y_f$df_group
