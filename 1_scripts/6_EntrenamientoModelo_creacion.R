@@ -81,7 +81,7 @@ db_model_s <- db_model_s %>%
                 ) %>% 
   dplyr::mutate_if(is.logical, as.numeric)
 db_model_s$group <- factor(db_model_s$group, levels = c("Consumer", "Services", "Industrials", "RealEstate"))
-
+db_model_s %>% glimpse()
 var_num <- c(which(names(db_model_s)== "ROA"):(ncol(db_model_s)-1))
 
 list_var_presel <- list()
@@ -152,6 +152,7 @@ var_cap_norm <- c("ROA","ROC","SalesGrowth","InventoriesCh","Pay_Rec_Ch",
                   "TotalSales_ind","Inventories_Sales_ind", "Pay_Rec_ind")
 var_cap_exp <- c("TotalLiab_TA","NetDebt_EBITDA","NetWorkingCapital_Sales","TotalDebt_EBITDA",
                   "RetEarn_CurrLiab","MktVEquity_BookVTotalLiab", "FFO_IntExp", "EBITDA_IntExp")
+# save(var_cap_norm,var_cap_exp, file = "6_EntrenamientoModelo_creacion/var_cap.RData")
 
 set.seed(12508904)
 i_group <- 1
@@ -642,30 +643,7 @@ db_edf %>% summary()
 db_model_glmm_join <- db_model_glmm %>% 
   dplyr::left_join(db_fin %>% dplyr::select(ISIN,CIQ_ID) %>% unique()) %>% 
   dplyr::select(ISIN, DateQ,Sector, Rating, tat, pred, y_bin_q)
-db_tree_edf <- db_edf %>% 
-  dplyr::mutate(DateQ = as.yearqtr(DateQ)) %>% 
-  dplyr::left_join(db_model_glmm_join) %>% 
-  dplyr::mutate(
-    y_num = ifelse(y_bin_q == 1, 1, 0),
-    y_error = y_num - pred,
-    D_rating = is.na(Rating)) %>% 
-  dplyr::filter(!is.na(y_bin_q)) %>% 
-  dplyr::mutate(Rating_A = ifelse(Rating%in%c("AAA", 
-                                                "AA+", "AA", "AA-",
-                                                "A+", "A", "A-"),1,0),
-                Rating_BPort = ifelse(Rating%in%c("BBB+","BBB","BBB-",
-                                              "BB+","BB","BB-"),1,0),
-                Rating_C = ifelse(Rating%in%c("CCC+","CCC","CCC-",
-                                              "CC","C"),1,0),
-                D_year_2007 = ifelse(year(DateQ)>2007,1,0),
-                D_year_2011 = ifelse(year(DateQ)>2007,1,0),
-                D_year_2015 = ifelse(year(DateQ)>2007,1,0),
-                group = factor(case_when(Sector %in% c("Consumer Discretionary", "Consumer Staples") ~ "Consumer",
-                                         Sector %in% c("Health Care", "Information Technology", "Telecommunications") ~ "Services",
-                                         Sector %in% c("Energy", "Industrials", "Materials", "Utilities") ~ "Industrials",
-                                         Sector %in% c("Real Estate") ~ "RealEstate",
-                                         TRUE ~ "Other"),
-                               levels = c("Consumer", "Services", "Industrials", "RealEstate", "Other")))
+
   
 # db_tree_edf$y_error %>% hist()
 # train random trees ----

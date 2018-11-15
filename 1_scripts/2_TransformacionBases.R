@@ -156,6 +156,19 @@ db_fin_sector <- db_fin_sector %>%
                 PayablesQ_ReceivablesQ_ind = median(PayablesQ_ReceivablesQ, na.rm = T)
                 ) %>% 
   dplyr::ungroup() 
+# create database for future sector data references
+# db_fin_sector_s <- db_fin_sector %>%
+#   dplyr::mutate(year = year(Date)) %>% 
+#   dplyr::group_by(Sector, year) %>% 
+#   dplyr::summarise(TotalAssets_ind = median(TotalAssetsQ, na.rm = T),
+#                 # TotalAssets_rat = TotalAssetsQ/TotalAssets_ind,
+#                 TotalSalesLTM_ind = median(TotalSalesLTM, na.rm = T),
+#                 # InventoriesQ_TotalSalesQ = InventoriesQ/TotalSalesQ,
+#                 InventoriesQ_TotalSalesQ_ind = median(InventoriesQ_TotalSalesQ, na.rm = T),
+#                 # PayablesQ_ReceivablesQ = PayablesQ/ReceivablesQ,
+#                 PayablesQ_ReceivablesQ_ind = median(PayablesQ_ReceivablesQ, na.rm = T)) %>% 
+#   dplyr::ungroup() 
+# save(db_fin_sector_s, file = "1_LecturaBases/db_fin_sector_s.RData")
 # db_fin_sector %>% 
 #   dplyr::group_by(Sector) %>% 
 #   dplyr::summarise(TA_min = min(TotalAssets_rat,na.rm = T),
@@ -294,6 +307,17 @@ vars_select <- c("Identifier", "CIQ_ID", "CompanyName", "ParentCompany", "ISIN",
                  "MktVEquity_BookVTotalLiab", "TD_TDEq_cat", "RetEarn_CurrLiab", "D_RetEarn_Neg",
                  "CashRatioL", "QuickRatioL", "CurrentRatioL",
                  "D_EBIT_neg", "Solv")
+vars_select_Port <- c("Identifier", "CompanyName", "ParentCompany", "CIQ_ISIN", "Sector", "Date", "year", 
+                 "ROA", "ROC", "SalesGrowth", "TotalAssets_cat", "TotalSales_ind", 
+                 "EBITDA_Sales", "D_EBITDA_Neg", "GrossProfit_Sales", "D_GP_Neg", 
+                 "IntangibleAssets_TA", "InventoriesCh", "Inventories_Sales_ind", "NetWorkingCapital_Sales", "D_NWC_Neg", 
+                 "TotalLiab_TA", "NetDebt_EBITDA", "TotalDebt_EBITDA", 
+                 "Pay_Rec_Ch", "Pay_Rec_ind", 
+                 "EBITDA_IntExp", "FFO_IntExp", "D_EBITDA_IntExp", "D_FFO_IntExp", 
+                 "MktVEquity_BookVTotalLiab", "TD_TDEq_cat", "RetEarn_CurrLiab", "D_RetEarn_Neg",
+                 "CashRatioL", "QuickRatioL", "CurrentRatioL",
+                 "D_EBIT_neg", "Solv")
+save(vars_select, vars_select_Port, file = "2_TransformacionBases/vars_select.RData")
 db_fin_mut %>% 
   dplyr::select(vars_select) %>% 
   glimpse()
