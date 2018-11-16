@@ -28,22 +28,79 @@ load_db_model <- function(){
 }
 lapply(load_db_model(), load, .GlobalEnv)
 # read financial database 
-read_fin_model <- function(path_fin = "csv/Financials/Financials_CIQ_port.csv", skip_row = 2){
-  if(!path_fin=="csv/Financials/Financials_CIQ_port.csv"){
-    message("New path introduced to read financial database, remember that all variables must be called as the ones in the 'Financials_CIQ_port.csv' file.")
-  }
+read_model_data <- function(data_path = "csv/Financials/Financials_CIQ_port.csv", skip_row = 2, data_type = "fin"){
   na_excel <- c("#NA", "#N/A", "#VALOR!")
   na_ciq <- c("NM", "(Invalid Identifier)", " (Invalid Identifier) ", "-", "NA")
   na_moodys <- c("You do not have permission to view this data.")
   na_read <- c(na_excel, na_ciq, na_moodys)
-  port_fin <- read_csv(path_fin,
-                       skip = skip_row, na = na_read, 
-                       col_types = list(Date = col_date(format = "%m/%d/%Y"), 
-                                        Index = col_skip(), 
-                                        Count = col_skip()))
-  return(port_fin)
+  data_type <- tolower(data_type)
+  fin_opt <- c("fin", "financial")
+  edf_opt <- c("edf", "edf1", "creditedge")
+  rat_opt <- c("ratings", "rating", "s&p","moodys", "rat")
+  sect_opt <- c("sector", "sec", "group", "industry", "ind")
+  if(data_type %in% fin_opt){
+    if(!data_path=="csv/Financials/Financials_CIQ_port.csv"){
+      message("New path introduced to read financial database, remember that all variables must be called as the ones in the 'Financials_CIQ_port.csv' file.")
+    }
+    #skip = 2
+    model_data <- read_csv(data_path,
+                           skip = skip_row, na = na_read, 
+                           col_types = list(Date = col_date(format = "%m/%d/%Y"), 
+                                            Index = col_skip(), 
+                                            Count = col_skip())
+                           )
+  }else{
+    if(data_type %in% edf_opt){
+      if(!data_path=="..\1_usage/PortfolioData/EDF/Portfolio_EDF_data_paste.csv"){
+        message("New path introduced to read financial database, remember that all variables must be called as the ones in the 'Portfolio_EDF_data_paste.csv' file.")
+      }
+      # skip = 4
+      model_data <- read_csv(data_path,
+                             skip = skip_row, na = na_read,
+                             col_types = list(Date = col_date(format = "%m/%d/%Y"),
+                                              Date_1 =col_date(format = "%m/%d/%Y"),
+                                              ID = col_skip(), 
+                                              Count = col_skip())
+                             )
+    }else{
+      if(data_type %in% rat_opt){
+        if(!data_path=="..\1_usage/PortfolioData/Ratings/Portfolio_Rating_data_paste.csv"){
+          message("New path introduced to read financial database, remember that all variables must be called as the ones in the 'Portfolio_Rating_data_paste.csv' file (or at least have the identifiers and Ratings columns needed).")
+        }
+        #skip = 2
+        model_data <- read_csv(date_path, 
+                               skip = skip_row, na = na_read,
+                               col_types = list(Date = col_date(format = "%m/%d/%Y"), 
+                                                Index = col_skip(), 
+                                                Count = col_skip())
+                               )
+        model_data$Rating <- factor(model_data$Rating, 
+                                    levels = c("AAA", 
+                                              "AA+", "AA", "AA-",
+                                              "A+", "A", "A-",
+                                              "BBB+", "BBB", "BBB-",
+                                              "BB+", "BB", "BB-",
+                                              "B+", "B", "B-",
+                                              "CCC+", "CCC", "CCC-",
+                                              "CC", "C"))
+      }else{
+        if(data_type %in% sect_opt){
+          message("Reading Sector data from file CV_Portfolio_Benchmark_Sector.\nIf that file is not up to date, new issuers will be ignored from the analysis.")
+          model_data <- read_csv("../1_usage/CV_Portfolio_Benchmark_Sector.csv",
+                                 col_types = list(X11 = col_skip(),X12 = col_skip(),X13 = col_skip(),X14 = col_skip()))
+          model_data[sapply(model_data, is.character)] <- lapply(model_data[sapply(model_data, is.character)], factor)
+        }else{
+          stop("data_type not inside one of the options to read data: \nfin\nedf\nrat\nTry again with another data_type.") 
+        }
+      }
+    }
+  }
+  return(model_data)
 }
-port_fin <- read_fin_model()
+port_fin <- read_model_data(data_type = "fin")
+# read_sector <- read_model_data(data_path = ,data_type = "sector")
+# read_edf <- read_model_data(data_path = ,data_type = "edf")
+# read_ratings <- read_model_data(data_path = ,data_type = "ratings")
 mod_names <- function(db = port_fin){
   names_db <- names(db)%>% 
     gsub(pattern = "\\&", replacement = "") %>% 
@@ -166,7 +223,7 @@ last_edf <- function(db = read_edf){
 data_wrangling <- function(db = port_fin){
   db_ls <- ls(envir = .GlobalEnv)
   list.of.dbs <- c("vars_select_Port",
-                   "read_fin_model","mod_names","last_edf",
+                   "read_model_data","mod_names","last_edf",
                    "data_wrangling_lag","data_wrangling_median","data_wrangling_ratios","data_wrangling_cat2num",
                    "read_sector", "db_fin_sector_s")
   new.dbs <- list.of.dbs[!(list.of.dbs %in% db_ls)]
@@ -207,207 +264,233 @@ data_wrangling <- function(db = port_fin){
 db_fin <- data_wrangling(port_fin)
 
 ### predicting glmm ----
-
 db_model_glmm <- matrix(data = NA,ncol = ncol(db_fin) + 1, nrow = 0) %>% as.data.frame()
 names(db_model_glmm) <- c(names(db_fin), "pred")
-
-for(j in 1:4){
-  
-  set.seed(12508905)
-  i_group <- j
-  index_group <- levels(db_fin$group)[i_group]
-  
-  db_model_fin <- db_fin %>% 
-    dplyr::filter(group == index_group)
-  # transform test data to be comparable to training set
-  db_model_cap_norm <- glmm_par[[i_group]]$var_norm %>% unique()
-  db_model_cap_exp <- glmm_par[[i_group]]$var_exp %>% unique()
-  db_model_ne <- db_model_fin %>% 
-    dplyr::left_join(db_model_cap_norm) %>% 
-    dplyr::left_join(db_model_cap_exp)
-  
-  
-  aux_norm <- db_model_fin %>% 
+glmm_cap <- function(db = db_group, db_ne = db_group_ne, lower = T){
+  db_cap <- db
+  aux_norm <- db %>% 
     dplyr::select(var_cap_norm)
-  aux_exp <- db_model_fin %>% 
+  aux_exp <- db %>% 
     dplyr::select(var_cap_exp)
-  aux_db_model_g <- cbind(aux_norm,aux_exp)
-  
-  for(i in 1:ncol(aux_db_model_g)){
-    name_n_i <- names(aux_db_model_g)[i]
-    name_nM_i <- which(str_detect(names(db_model_ne), pattern = name_n_i))[2]
-    name_nS_i <- which(str_detect(names(db_model_ne), pattern = name_n_i))[3]
+  aux_db <- cbind(aux_norm, aux_exp)
+  for(i in 1:ncol(aux_db)){
+    name_n_i <- names(aux_db)[i]
+    name_nM_i <- which(str_detect(names(db_ne), pattern = name_n_i))[2]
+    name_nS_i <- which(str_detect(names(db_ne), pattern = name_n_i))[3]
     
-    db_model_fin[[name_n_i]] <- ifelse(db_model_fin[[name_n_i]]<= db_model_ne[[name_nM_i]] + 3* db_model_ne[[name_nS_i]],
-                                       db_model_fin[[name_n_i]],
-                                       db_model_ne[[name_nM_i]] + 3* db_model_ne[[name_nS_i]])
-    db_model_fin[[name_n_i]] <- ifelse(db_model_fin[[name_n_i]]>= db_model_ne[[name_nM_i]] - 3* db_model_ne[[name_nS_i]],
-                                       db_model_fin[[name_n_i]],
-                                       db_model_ne[[name_nM_i]] - 3* db_model_ne[[name_nS_i]])
+    db_cap[[name_n_i]] <- ifelse(db_cap[[name_n_i]]<= db_ne[[name_nM_i]] + 3* db_ne[[name_nS_i]],
+                                       db_cap[[name_n_i]],
+                                       db_ne[[name_nM_i]] + 3* db_ne[[name_nS_i]])
+    if(lower){
+      db_cap[[name_n_i]] <- ifelse(db_cap[[name_n_i]]>= db_ne[[name_nM_i]] - 3* db_ne[[name_nS_i]],
+                                         db_cap[[name_n_i]],
+                                         db_ne[[name_nM_i]] - 3* db_ne[[name_nS_i]])
+    }
   }
-  # nas should be predicted or accounted for (using bootstrap for example) to not throw away valiable information)
-  # db_model_g_test %>% summary()
-  na_list <- apply(is.na(as.matrix(db_model_fin)), FUN = which, MARGIN = 2)
-  na_ini <- which(names(db_model_fin)=="ROA")
-  na_fin <- which(names(db_model_fin)=="Solv")
+  return(db_cap)
+}
+glmm_nas <- function(db = db_cap){
+  na_list <- apply(is.na(as.matrix(db)), FUN = which, MARGIN = 2)
+  na_ini <- which(names(db)=="ROA")
+  na_fin <- which(names(db)=="Solv")
+  db_na0 <- db
   for(k in na_ini:na_fin){
     l_col_na_list <- na_list[[k]] %>% length()
     if(l_col_na_list>0){
-      db_model_fin[na_list[[k]],k] <- 0
+      db_na0[na_list[[k]],k] <- 0
     }
   }
-  # 
-  # # db_model_g_test %>% summary()
-  
-  
-  db_model_fin$pred <- predict(glmm_par[[i_group]]$glmm, newdata = db_model_fin, type = "response", allow.new.levels = T)
-  db_model_glmm <- rbind(db_model_glmm, db_model_fin)
+  return(db_na0)
 }
-
+glmm_predict <- function(db = db_na0, n_groups = groups, glmm_par = glmm_par, allow_new_levels = T){
+  db_glmm <- matrix(data = NA,ncol = ncol(db) + 1, nrow = 0) %>% as.data.frame()
+  names(db_glmm) <- c(names(db), "pred")
+  for(j in 1:n_groups){
+    index_group <- levels(db$group)[j]
+    message("Predicting glmm for group ", index_group, "...")
+    db_group <- db %>% 
+      dplyr::filter(group == index_group)
+    db_group$pred <- predict(object = glmm_par[[j]]$glmm, newdata = db_group, type = "response", allow.new.levels = allow_new_levels)
+    db_glmm <- rbind(db_glmm, db_group)
+  }
+  return(db_glmm)
+}
+glmm <- function(db = db_fin, groups = 4, cap = T, na_0 = T, allow_new_levels = T){
+  db_ls <- ls(envir = .GlobalEnv)
+  list.of.dbs <- c("var_cap_norm","var_cap_exp",
+                   "glmm_cap","glmm_nas","glmm_predict",
+                   "glmm_par", 
+                   "db_fin")
+  new.dbs <- list.of.dbs[!(list.of.dbs %in% db_ls)]
+  if(length(new.dbs)){
+    message("Databases needed for the glmm models not fully loaded.")
+  } 
+  len_glmm_par <- length(glmm_par)
+  if(groups>len_glmm_par){
+    message("More groups selected than those already accounted for in the glmm model. \nERROR")
+  }else{
+    if(groups<len_glmm_par){
+      message("There are more glmm models than groups selected, only the first ",groups," will be predicted, all of the other groups will be ignored.")
+    }
+  }
+  if(cap){
+    message("Capping variables...")
+    db_cap  <- matrix(data = NA,ncol = ncol(db) , nrow = 0) %>% as.data.frame()
+    names(db_cap) <- names(db)
+    for(i in 1:groups){
+      index_group <- levels(db$group)[i]
+      db_group <- db %>% 
+        dplyr::filter(group == index_group)
+      db_group_cap_norm <- glmm_par[[i]]$var_norm %>% unique()
+      db_group_cap_exp <- glmm_par[[i]]$var_exp %>% unique()
+      db_group_ne <- db_group %>% 
+        dplyr::left_join(db_group_cap_norm) %>% 
+        dplyr::left_join(db_group_cap_exp)
+      db_cap_aux <- glmm_cap(db = db_group, db_ne = db_group_ne)
+      db_cap <- rbind(db_cap, db_cap_aux)
+    }
+    message("Process finished")
+  }else{
+    db_cap <- db
+  }
+  if(na_0){
+    message("Transforming NAs...")
+    db_na0 <- glmm_nas(db = db_cap)
+    message("Process finished")
+  }else{
+    db_na0 <- db_cap
+  }
+  db_glmm_pred <- glmm_predict(db = db_na0, n_groups = groups, glmm_par = glmm_par, allow_new_levels = allow_new_levels)
+  message("Predictions for generalized linear mixed model complete. :)")
+  return(db_glmm_pred)
+}
+db_model_glmm <- glmm(db = db_fin, groups = 4)
 # add edf correction ----
-# edf
-tree_edf <- read_edf %>% 
-  dplyr::mutate(slope = EDF5-EDF,
-                EDFch = EDF-EDF_LY,
-                DetProbCh = DetProb - DetProb_LY,
-                DateQ = as.yearqtr(Date)) %>% 
-  dplyr::group_by(ISIN,DateQ) %>% 
-  dplyr::summarise(EDF1_1 = dplyr::first(EDF),
-                   EDF1_2 = dplyr::nth(EDF,2),
-                   EDF1_3 = dplyr::last(EDF),
-                   EDF1Ch_1 = dplyr::first(EDFch),
-                   EDF1Ch_2 = dplyr::nth(EDFch,2),
-                   EDF1Ch_3 = dplyr::last(EDFch),
-                   EDF5_1 = dplyr::first(EDF5),
-                   EDF5_2 = dplyr::nth(EDF5,2),
-                   EDF5_3 = dplyr::last(EDF5),
-                   DetProb_1 = dplyr::first(DetProb),
-                   DetProb_2 = dplyr::nth(DetProb,2),
-                   DetProb_3 = dplyr::last(DetProb),
-                   DetProbCh_1 = dplyr::first(DetProbCh),
-                   DetProbCh_2 = dplyr::nth(DetProbCh,2),
-                   DetProbCh_3 = dplyr::last(DetProbCh),
-                   slope_1 = dplyr::first(slope),
-                   slope_2 = dplyr::nth(slope,2),
-                   slope_3 = dplyr::last(slope))
-tree_edf <- tree_edf %>% 
-  dplyr::ungroup() %>% 
-  dplyr::rowwise() %>% 
-  dplyr::transmute(
-    DateQ = DateQ,
-    ISIN = ISIN,
-    EDF1 = case_when((!is.na(EDF1_1)) ~ EDF1_1,
-                     (!is.na(EDF1_2)) ~ EDF1_2,
-                     (!is.na(EDF1_3)) ~ EDF1_3,
-                     TRUE ~ NA_real_),
-    EDF5 = case_when(!is.na(EDF5_1) ~ EDF5_1,
-                     !is.na(EDF5_2) ~ EDF5_2,
-                     !is.na(EDF5_3) ~ EDF5_3,
-                     TRUE ~ NA_real_),
-    DetProb = case_when(!is.na(DetProb_1) ~ DetProb_1,
-                        !is.na(DetProb_2) ~ DetProb_2,
-                        !is.na(DetProb_3) ~ DetProb_3,
+tree_edf_w <- function(db = db_model_glmm, db_edf = read_edf){
+  tree_edf <- db_edf %>% 
+    dplyr::mutate(ISIN = gsub(Isin, pattern = "isin-", replacement = "")) %>%
+    dplyr::mutate(slope = EDF5-EDF,
+                  EDFch = EDF-EDF_LY,
+                  DetProbCh = DetProb - DetProb_LY,
+                  DateQ = as.yearqtr(Date)) %>% 
+    dplyr::group_by(ISIN,DateQ) %>% 
+    dplyr::summarise(EDF1_1 = dplyr::first(EDF),
+                     EDF1_2 = dplyr::nth(EDF,2),
+                     EDF1_3 = dplyr::last(EDF),
+                     EDF1Ch_1 = dplyr::first(EDFch),
+                     EDF1Ch_2 = dplyr::nth(EDFch,2),
+                     EDF1Ch_3 = dplyr::last(EDFch),
+                     EDF5_1 = dplyr::first(EDF5),
+                     EDF5_2 = dplyr::nth(EDF5,2),
+                     EDF5_3 = dplyr::last(EDF5),
+                     DetProb_1 = dplyr::first(DetProb),
+                     DetProb_2 = dplyr::nth(DetProb,2),
+                     DetProb_3 = dplyr::last(DetProb),
+                     DetProbCh_1 = dplyr::first(DetProbCh),
+                     DetProbCh_2 = dplyr::nth(DetProbCh,2),
+                     DetProbCh_3 = dplyr::last(DetProbCh),
+                     slope_1 = dplyr::first(slope),
+                     slope_2 = dplyr::nth(slope,2),
+                     slope_3 = dplyr::last(slope))
+  tree_edf <- tree_edf %>% 
+    dplyr::ungroup() %>% 
+    dplyr::rowwise() %>% 
+    dplyr::transmute(
+      DateQ = DateQ,
+      ISIN = ISIN,
+      EDF1 = case_when((!is.na(EDF1_1)) ~ EDF1_1,
+                       (!is.na(EDF1_2)) ~ EDF1_2,
+                       (!is.na(EDF1_3)) ~ EDF1_3,
+                       TRUE ~ NA_real_),
+      EDF5 = case_when(!is.na(EDF5_1) ~ EDF5_1,
+                       !is.na(EDF5_2) ~ EDF5_2,
+                       !is.na(EDF5_3) ~ EDF5_3,
+                       TRUE ~ NA_real_),
+      DetProb = case_when(!is.na(DetProb_1) ~ DetProb_1,
+                          !is.na(DetProb_2) ~ DetProb_2,
+                          !is.na(DetProb_3) ~ DetProb_3,
+                          TRUE ~ NA_real_),
+      slope = case_when(!is.na(slope_1) ~ slope_1,
+                        !is.na(slope_2) ~ slope_2,
+                        !is.na(slope_3) ~ slope_3,
                         TRUE ~ NA_real_),
-    slope = case_when(!is.na(slope_1) ~ slope_1,
-                      !is.na(slope_2) ~ slope_2,
-                      !is.na(slope_3) ~ slope_3,
-                      TRUE ~ NA_real_),
-    EDF1_Ch = case_when(!is.na(EDF1Ch_1) ~ EDF1Ch_1,
-                        !is.na(EDF1Ch_2) ~ EDF1Ch_2,
-                        !is.na(EDF1Ch_3) ~ EDF1Ch_3,
-                        TRUE ~ NA_real_),
-    DetProb_Ch = case_when(!is.na(DetProbCh_1) ~ DetProbCh_1,
-                           !is.na(DetProbCh_2) ~ DetProbCh_2,
-                           !is.na(DetProbCh_3) ~ DetProbCh_3,
-                           TRUE ~ NA_real_),
-    D_slope = slope<0) %>% 
-  dplyr::ungroup()
-tree_edf <- tree_edf %>% 
-  dplyr::mutate(DateQ = as.yearqtr(DateQ))
-db_tree <- db_model_glmm %>% 
-  dplyr::mutate(EDF_t = EDF1) %>% 
-  dplyr::select(-c(EDF1)) %>% 
-  dplyr::left_join(tree_edf)
-# rating
-db_tree <- db_tree %>% 
-  dplyr::left_join(read_ratings %>% 
-                     dplyr::select(ISIN,DateQ,Rating)) %>% 
-  unique()
-db_tree_edf <- db_tree %>% 
-  dplyr::mutate(
-    D_rating = is.na(Rating)) %>% 
-  dplyr::mutate(Rating_A = ifelse(Rating%in%c("AAA", 
-                                              "AA+", "AA", "AA-",
-                                              "A+", "A", "A-"),1,0),
-                Rating_BPort = ifelse(Rating%in%c("BBB+","BBB","BBB-",
-                                                  "BB+","BB","BB-"),1,0),
-                Rating_C = ifelse(Rating%in%c("CCC+","CCC","CCC-",
-                                              "CC","C"),1,0))
-# names(db_tree_edf)
-# (formula_tree <- as.formula("y_error ~ EDF1 + EDF5 + DetProb + slope + EDF1_Ch + DetProb_Ch + D_slope + 
-#                             Rating_A + Rating_BPort + Rating_C + D_rating  + group"))
-load("6_EntrenamientoModelo_creacion/tree_par.RData")
-db_tree_edf$edf_tree_corr <- predict(tree_par, newdata = db_tree_edf)
-db_tree_edf <- db_tree_edf %>% 
-  rowwise() %>% 
-  dplyr::mutate(pred_fin = sum(c(edf_tree_corr ,pred),na.rm = T),
-                prob_det = pmin(pmax(pred_fin,0),1)) %>% 
-  dplyr::ungroup()
-db_tree_edf <- db_tree_edf %>% 
-  dplyr::mutate(DateQ = as.yearqtr(DateQ-.25))
-#### summary ----
-db_model_glmm %>% 
-  dplyr::filter(pred>=0.7) %>% 
-  summary()
-db_model_glmm %>% 
-  dplyr::filter(pred>=0.25) %>% 
-  summary()
+      EDF1_Ch = case_when(!is.na(EDF1Ch_1) ~ EDF1Ch_1,
+                          !is.na(EDF1Ch_2) ~ EDF1Ch_2,
+                          !is.na(EDF1Ch_3) ~ EDF1Ch_3,
+                          TRUE ~ NA_real_),
+      DetProb_Ch = case_when(!is.na(DetProbCh_1) ~ DetProbCh_1,
+                             !is.na(DetProbCh_2) ~ DetProbCh_2,
+                             !is.na(DetProbCh_3) ~ DetProbCh_3,
+                             TRUE ~ NA_real_),
+      D_slope = slope<0) %>% 
+    dplyr::ungroup()
+  tree_edf <- tree_edf %>% 
+    dplyr::mutate(DateQ = as.yearqtr(DateQ))
+  edf_t_detect <- which(str_detect(names(db), pattern = "EDF1"))
+  if(length(edf_t_detect)){
+    db <- db %>% 
+      dplyr::mutate(EDF_t = EDF1) %>% 
+      dplyr::select(-c(EDF1))
+  }
+  db_tree_edf <- db %>% 
+    dplyr::left_join(tree_edf)
+  return(db_tree_edf)
+}
+tree_rating_w <- function(db = db_tree_edf, db_rating = read_ratings){
+  db_tree_ratings <- db %>% 
+    dplyr::left_join(db_ratings %>% 
+                       dplyr::select(ISIN,DateQ,Rating)) %>% 
+    unique()
+  db_tree_ratings <- db_tree_ratings %>% 
+    dplyr::mutate(
+      D_rating = is.na(Rating)) %>% 
+    dplyr::mutate(Rating_A = ifelse(Rating%in%c("AAA", 
+                                                "AA+", "AA", "AA-",
+                                                "A+", "A", "A-"),1,0),
+                  Rating_BPort = ifelse(Rating%in%c("BBB+","BBB","BBB-",
+                                                    "BB+","BB","BB-"),1,0),
+                  Rating_C = ifelse(Rating%in%c("CCC+","CCC","CCC-",
+                                                "CC","C"),1,0))
+  return(db_tree_ratings)
+}
+tree_predict <- function(db = db_tree_rating, tree_par = tree_par){
+  db_tree <- db
+  db_tree$edf_tree_corr <- predict(tree_par, newdata = db_tree)
+  db_tree <- db_tree %>% 
+    rowwise() %>% 
+    dplyr::mutate(pred_fin = sum(c(edf_tree_corr ,pred),na.rm = T),
+                  prob_det = pmin(pmax(pred_fin,0),1)) %>% 
+    dplyr::ungroup()
+  db_tree <- db_tree %>% 
+    dplyr::mutate(DateQ = as.yearqtr(DateQ-.25))
+  return(db_tree)
+}
+tree <- function(db = db_model_glmm, read_edf = read_edf, read_ratings = read_ratings){
+  db_ls <- ls(envir = .GlobalEnv)
+  list.of.dbs <- c("tree_edf_w","tree_rating_w","tree_predict",
+                   "tree_par", 
+                   "db_model_glmm")
+  new.dbs <- list.of.dbs[!(list.of.dbs %in% db_ls)]
+  if(length(new.dbs)){
+    message("Databases needed for the data wrangling for the tree model not loaded.")
+  } 
+  message("Adding EDF data for the random tree prediction...")
+  db_tree_edf <- tree_edf_w(db = db, db_edf = read_edf)
+  message("Adding Ratings data for the random tree prediction...")
+  db_tree_rating <- tree_rating_w(db = db_tree_edf, db_rating = read_ratings)
+  message("Calculating the random tree correction factor...")
+  db_tree <- tree_predict(db = db_tree_rating, tree_par = tree_par)
+  message("Final deterioration probabilities estimated! Good luck! ;)")
+  return(db_tree)
+}
+db_model_tree <- tree(db = db_model_glmm, read_edf = read_edf, read_ratings = read_ratings)
+#### output ----
+output_stopSign <- function(){}
+output_KNN <- function(){}
+output_OU <- function(){}
+output_model <- function(db = db_model_tree){
+  "Generating outputs from the model..."
+}
+#### save RDs ----
 
-# db_tree_edf %>% 
-#   tidyr::gather(key = var, value = val, ROA:Solv) %>% 
-#   dplyr::group_by(ISIN) %>% 
-#   dplyr::summarise(n = n(),
-#                    na = sum(is.na(val)),
-#                    na_n = na/n) %>% 
-#   dplyr::arrange(desc(na_n)) %>% 
-#   dplyr::filter(na_n == 1) %>% 
-#   dplyr::select(ISIN) %>% unique() %>% 
-#   dplyr::left_join(db_tree_edf %>% dplyr::select(ISIN,CompanyName,ParentCompany)) %>% unique() %>% 
-#   dplyr::arrange(CompanyName) %>% View()
-
-
-db_tree_edf %>% 
-  dplyr::filter(prob_det>=0.7) %>% 
-  summary()
-db_tree_edf %>% 
-  dplyr::filter(prob_det>=0.25) %>% 
-  summary()
-table(db_tree_edf$Rating, db_tree_edf$pred>0.7)
-table(db_tree_edf$Rating, db_tree_edf$prob_det>0.7)
-
-db_tree_edf %>% 
-  dplyr::filter(DateQ>=2017.25) %>% 
-  dplyr::filter(prob_det>0.7) %>% View()
-db_tree_edf %>% 
-  dplyr::filter(DateQ>=2018.25) %>% 
-  dplyr::arrange(desc(prob_det)) %>% 
-  dplyr::select(ISIN,Identifier,CompanyName,Sector,EDF_t,pred,prob_det) %>% View()
-db_tree_edf %>% 
-  dplyr::filter(CompanyName == "Nabors Industries Ltd.") %>% View()
-
-#### graphics ----
-db_model_glmm %>% 
-  ggplot(aes(x = DateQ,   y = pred, colour = Sector)) +
-  geom_point(alpha =0.35) + theme_bw() + 
-  facet_wrap(~group) + geom_smooth(se = F, col = "black") + ylim(c(0,1))
-db_tree_edf %>% 
-  ggplot(aes(x = DateQ,   y = prob_det, colour = Sector)) +
-  geom_point(alpha =0.35) + theme_bw() + 
-  facet_wrap(~group) + geom_smooth(se = F, col = "black") + ylim(c(0,1))
-db_tree_edf %>% 
-  dplyr::filter(Rating_BPort==1|D_rating==1) %>% 
-  dplyr::filter(prob_det>0.65) %>% 
-  ggplot(aes(x = DateQ, y = prob_det, label = CompanyName, colour = Sector)) + 
-  geom_point(size = 3.5, alpha = 0.15) + geom_label(size = 2.5, alpha = 0.35) + 
-  facet_wrap(~group, ncol = 1) + theme_bw()
 
