@@ -723,7 +723,8 @@ db_tree_edf %>%
   ggplot(aes(x = DateQ, y = pred_edf, colour = y_bin_q)) + 
   geom_jitter(alpha = 0.25, show.legend = F) + facet_grid(stop_sign~Rating) + theme_bw() +
   theme(axis.text.x = element_text(angle = 90, size = 7))
-stopSign_list <- c(0.1,0.25,0.7)
+stopSign_list <- c(0.1,0.20,0.4,0.7)
+save(stopSign_list, file = "6_EntrenamientoModelo_creacion/stopSignInd.RData")
 db_tree_edf %>% 
   dplyr::filter(Rating%in%c("BBB+","BBB","BBB-","BB+","BB","BB-")) %>% 
   dplyr::arrange(desc(pred_edf), DateQ) %>% View()
@@ -757,7 +758,7 @@ train_tree <- which(db_tree_edf$tat == "test")
 tree_par <-  rpart(formula_tree ,data = db_tree_edf, subset = train_tree,
                    method = "anova", control = rpart.control(minsplit = 20, cp = 0.00175))
 ### output ----
-save(tree_par, stopSign_list, file = "6_EntrenamientoModelo_creacion/tree_par.RData")
+save(tree_par, file = "6_EntrenamientoModelo_creacion/tree_par.RData")
 
 
 
